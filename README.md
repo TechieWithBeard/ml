@@ -1,48 +1,78 @@
-# Techie With Beard AI Lab
+# Techie With Beard AI Lab 🧠
 
-Python workspace for ML, LangChain, RAG, agents, and AI interface prototypes that can later be surfaced in the portfolio demo hub.
+A hands-on AI/ML experimentation workspace focused on building practical **LLM-powered applications with Python, LangChain, RAG, local models, vector databases, and Streamlit**.
 
-## Setup
+This project is part of my exploration into building production-oriented AI features that can eventually be integrated into my developer portfolio.
 
-```bash
-cd /Users/techiewithbeard/Downloads/vishnu-portfolio/vishnu-portfolio-app/ml
-python3 -m venv .venv
-source .venv/bin/activate
-pip install ".[dev]"
-cp .env.example .env
-```
+## 🚀 Current Project
 
-Add provider keys in `.env` only when needed.
+### Resume Analyzer & RAG Application
 
-## Run
+The current application is a Streamlit-based Resume Analyzer that allows users to:
 
-```bash
-python -m techiewithbeard_ai
-pytest
-```
+- 📄 Upload a PDF resume
+- 🔍 Extract and chunk document content
+- 🧠 Generate embeddings using Ollama
+- 🗄️ Store embeddings in Chroma Cloud
+- 🔎 Retrieve relevant resume sections using semantic similarity search
+- 🤖 Ask questions about the uploaded resume
+- 📦 Return structured responses using Pydantic models
+- 🔗 Analyze external profile links as part of the next stage of the project
 
-Run a PDF loader module:
-
-```bash
-python -m techiewithbeard_ai.loaders.pdf_loader artifacts/your-file.pdf
-```
-
-## Structure
+### Current Architecture
 
 ```text
-ml/
-├── src/techiewithbeard_ai/  # Reusable AI/LangChain code
-├── tests/                   # Unit tests
-├── notebooks/               # Exploration notebooks
-├── data/                    # Local datasets, ignored by git
-├── artifacts/               # Vector stores, outputs, ignored by git
-├── .env.example             # Safe config template
-└── pyproject.toml           # Python package + dependencies
-```
-
-## Next Ideas
-
-- Add a document loader and splitter for a portfolio/resume RAG demo.
-- Add vector store support with Chroma or FAISS.
-- Add a Streamlit app for quick UI demos.
-- Add a FastAPI endpoint that the Angular portfolio can call.
+                    ┌─────────────────────┐
+                    │     Streamlit UI    │
+                    │                     │
+                    │  PDF Upload         │
+                    │  Resume Q&A         │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │    PDF Loader       │
+                    │                     │
+                    │ PyPDFLoader         │
+                    │ Text Splitting      │
+                    │ File Hashing        │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │ Ollama Embeddings   │
+                    │                     │
+                    │ embeddinggemma      │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │   Chroma Cloud      │
+                    │                     │
+                    │ Vector Storage      │
+                    │ Semantic Search     │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │     RAG Chain       │
+                    │                     │
+                    │ Retrieve Context    │
+                    │ Build Prompt        │
+                    │ Generate Answer     │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │     Ollama LLM      │
+                    │                     │
+                    │      Gemma          │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │ Structured Output   │
+                    │                     │
+                    │ Pydantic Models     │
+                    │ ResumeAnalyser      │
+                    └─────────────────────┘

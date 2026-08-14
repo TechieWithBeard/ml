@@ -6,11 +6,14 @@ from dotenv import load_dotenv
 from langchain_core.documents import Document
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from techiewithbeard_ai.schema.provider import ModelConfig
+
+from techiewithbeard_ai.retrievers.embeddings import upload_embeddings_to_chroma
+
+from techiewithbeard_ai.retrievers.embeddings import get_vector_store
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[3] / ".env")
 
-from techiewithbeard_ai.chains.rag_chain import get_vector_store
-from techiewithbeard_ai.retrievers.embeddings import get_ollama_embeddings, upload_embeddings_to_chroma
 import uuid
 import hashlib
 
@@ -36,7 +39,7 @@ def calculate_file_hash(path: Path) -> str:
 
     return sha.hexdigest()
 
-def pdf_loader(file_path: str) -> PdfLoadResult:
+def pdf_loader(  provider_config:ModelConfig,file_path: str) -> PdfLoadResult:
     """Load a PDF file and return a list of Document objects."""
     path = Path(file_path).expanduser().resolve()
     if not path.exists():
@@ -46,7 +49,7 @@ def pdf_loader(file_path: str) -> PdfLoadResult:
 
     file_hash = calculate_file_hash(path)
     
-    vector_store = get_vector_store()
+    vector_store = get_vector_store(provider_config)
 
     existing = vector_store.get(
         where={
@@ -68,7 +71,7 @@ def pdf_loader(file_path: str) -> PdfLoadResult:
         doc.metadata["source"] = f"{path} - page {i + 1}"
         # print(f"Document {i+1} Content Preview: {doc}")
         # print(f"Metadata: {doc.metadata}")
-        recursive_splitter(
+        recursive_splitter(provider_config,
             text=doc.page_content,
             source=doc.metadata["source"],
             file_hash=file_hash,
@@ -80,7 +83,7 @@ def pdf_loader(file_path: str) -> PdfLoadResult:
         message=f"Indexed {len(documents)} page(s) successfully.",
     )
 
-def recursive_splitter(text: str,source: str,file_hash:str,file_name:str) -> None:
+def recursive_splitter(provider_config:ModelConfig,text: str,source: str,file_hash:str,file_name:str) -> None:
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=500,
         chunk_overlap=50,
@@ -106,14 +109,11 @@ def recursive_splitter(text: str,source: str,file_hash:str,file_name:str) -> Non
     # print(f"Number of chunks: {len(chunks)}")
     # print(f"Chunk sizes: {[len(c) for c in chunks]}")
     # print(f"\nFirst chunk preview:\n{chunks[0][:200]}...")
-    embeddings=get_ollama_embeddings(chunks)
-    
     upload_embeddings_to_chroma(
-        embeddings=embeddings,
+        config=provider_config,
         texts=chunks,
         metadatas=chunk_records,
-        ids=[record["chunk_id"] for record in chunk_records],
-        collection_name="example_collection",
+        ids=[record["chunk_id"] for record in chunk_records]
     )
 
 # if __name__ == "__main__":
