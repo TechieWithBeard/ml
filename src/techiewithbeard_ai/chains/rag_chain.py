@@ -44,22 +44,6 @@ class ResumeAnalyser(BaseModel):
         description="Answer to the user's question."
     )
     
-# def get_vector_store(provider_config:ModelConfig,collection_name: str = "example_collection") -> Chroma:
-#     """Return the configured cloud-backed Chroma vector store for the ML app."""
-#     embeddings = get_embedding_model(provider_config)
-#     print(f"Using embeddings: {embeddings} from a common path")
-#     api_key = os.getenv("CHROMA_API_KEY")
-#     tenant = os.getenv("CHROMA_TENANT")
-#     database = os.getenv("CHROMA_DATABASE")
-    
-#     return Chroma(
-#         collection_name=collection_name,
-#         embedding_function=embeddings,
-#         chroma_cloud_api_key=api_key,
-#         tenant=tenant,
-#         database=database,
-#     )
-
 
 def _collection_count(vector_store: Any) -> int:
     """Return the number of indexed records using the Chroma API supported in this runtime."""

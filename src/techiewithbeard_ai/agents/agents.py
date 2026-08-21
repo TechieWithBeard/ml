@@ -32,12 +32,17 @@ def get_embedding_model(config: ModelConfig):
 
 def get_chat_model(config: ModelConfig):
     provider = config.provider.lower()
-
+    print(
+    f"HF model={config.chat_model}, "
+    f"max_new_tokens={config.max_new_tokens}"
+)
     if provider == "ollama":
         return ChatOllama(
             model=config.chat_model,
             base_url=config.ollama_url,
-            temperature=0.0,
+            temperature=config.temperature,
+            num_predict=config.max_new_tokens,
+            num_ctx=16384
         )
     if provider == "hugging face":
         if not config.hf_token:

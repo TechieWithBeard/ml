@@ -14,6 +14,7 @@ dependencies = [
   "langchain-core>=0.2.43",
   "langchain-openai>=0.1.25",
   "langchain-ollama>=0.3.0,<1.0.0",
+  "langchain-huggingface>=0.3.0",
   "python-dotenv>=1.0.1",
   "pydantic>=2.8.2",
   "pydantic-settings>=2.5.2",
@@ -22,6 +23,9 @@ dependencies = [
   "langchain-postgres>=0.0.17",
   "langchain-chroma>=0.2.2",
   "uuid>=1.30",
+  "streamlit-mermaid",
+   # ZeroGPU
+  "spaces",
 ]
 authors = [
     {name = "Vishnu Thankappan",email = "vishnuthankappan@techiewithbeard.com"},

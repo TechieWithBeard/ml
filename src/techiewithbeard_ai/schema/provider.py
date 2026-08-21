@@ -11,3 +11,5 @@ class ModelConfig(BaseModel):
     ollama_url: str = "http://localhost:11434"
     hf_token: SecretStr | None = None
     chroma_mode: str = "local"
+    temperature: float = 0.0
+    max_new_tokens: int = 2048

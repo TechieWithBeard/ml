@@ -11,6 +11,7 @@ Requires-Dist: langchain-community>=0.2.19
 Requires-Dist: langchain-core>=0.2.43
 Requires-Dist: langchain-openai>=0.1.25
 Requires-Dist: langchain-ollama<1.0.0,>=0.3.0
+Requires-Dist: langchain-huggingface>=0.3.0
 Requires-Dist: python-dotenv>=1.0.1
 Requires-Dist: pydantic>=2.8.2
 Requires-Dist: pydantic-settings>=2.5.2
@@ -19,6 +20,8 @@ Requires-Dist: typer>=0.12.5
 Requires-Dist: langchain-postgres>=0.0.17
 Requires-Dist: langchain-chroma>=0.2.2
 Requires-Dist: uuid>=1.30
+Requires-Dist: streamlit-mermaid>=0.3.0
+Requires-Dist: spaces
 Provides-Extra: dev
 Requires-Dist: pytest>=8.3.3; extra == "dev"
 Requires-Dist: ruff>=0.6.9; extra == "dev"
@@ -28,51 +31,81 @@ Requires-Dist: jupyter>=1.1.1; extra == "notebooks"
 Provides-Extra: streamlit
 Requires-Dist: streamlit>=1.38.0; extra == "streamlit"
 
-# Techie With Beard AI Lab
+# Techie With Beard AI Lab 🧠
 
-Python workspace for ML, LangChain, RAG, agents, and AI interface prototypes that can later be surfaced in the portfolio demo hub.
+A hands-on AI/ML experimentation workspace focused on building practical **LLM-powered applications with Python, LangChain, RAG, local models, vector databases, and Streamlit**.
 
-## Setup
+This project is part of my exploration into building production-oriented AI features that can eventually be integrated into my developer portfolio.
 
-```bash
-cd /Users/techiewithbeard/Downloads/vishnu-portfolio/vishnu-portfolio-app/ml
-python3 -m venv .venv
-source .venv/bin/activate
-pip install ".[dev]"
-cp .env.example .env
-```
+## 🚀 Current Project
 
-Add provider keys in `.env` only when needed.
+### Resume Analyzer & RAG Application
 
-## Run
+The current application is a Streamlit-based Resume Analyzer that allows users to:
 
-```bash
-python -m techiewithbeard_ai
-pytest
-```
+- 📄 Upload a PDF resume
+- 🔍 Extract and chunk document content
+- 🧠 Generate embeddings using Ollama
+- 🗄️ Store embeddings in Chroma Cloud
+- 🔎 Retrieve relevant resume sections using semantic similarity search
+- 🤖 Ask questions about the uploaded resume
+- 📦 Return structured responses using Pydantic models
+- 🔗 Analyze external profile links as part of the next stage of the project
 
-Run a PDF loader module:
-
-```bash
-python -m techiewithbeard_ai.loaders.pdf_loader artifacts/your-file.pdf
-```
-
-## Structure
+### Current Architecture
 
 ```text
-ml/
-├── src/techiewithbeard_ai/  # Reusable AI/LangChain code
-├── tests/                   # Unit tests
-├── notebooks/               # Exploration notebooks
-├── data/                    # Local datasets, ignored by git
-├── artifacts/               # Vector stores, outputs, ignored by git
-├── .env.example             # Safe config template
-└── pyproject.toml           # Python package + dependencies
-```
-
-## Next Ideas
-
-- Add a document loader and splitter for a portfolio/resume RAG demo.
-- Add vector store support with Chroma or FAISS.
-- Add a Streamlit app for quick UI demos.
-- Add a FastAPI endpoint that the Angular portfolio can call.
+                    ┌─────────────────────┐
+                    │     Streamlit UI    │
+                    │                     │
+                    │  PDF Upload         │
+                    │  Resume Q&A         │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │    PDF Loader       │
+                    │                     │
+                    │ PyPDFLoader         │
+                    │ Text Splitting      │
+                    │ File Hashing        │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │ Ollama Embeddings   │
+                    │                     │
+                    │ embeddinggemma      │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │   Chroma Cloud      │
+                    │                     │
+                    │ Vector Storage      │
+                    │ Semantic Search     │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │     RAG Chain       │
+                    │                     │
+                    │ Retrieve Context    │
+                    │ Build Prompt        │
+                    │ Generate Answer     │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │     Ollama LLM      │
+                    │                     │
+                    │      Gemma          │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │ Structured Output   │
+                    │                     │
+                    │ Pydantic Models     │
+                    │ ResumeAnalyser      │
+                    └─────────────────────┘
