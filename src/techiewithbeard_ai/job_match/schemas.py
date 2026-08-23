@@ -115,30 +115,31 @@ class CandidateScore(BaseModel):
     reasoning: str
     
 class Critique(BaseModel):
+
     strengths: list[str] = Field(
         default_factory=list,
-        description="Candidate strengths relevant to the job."
+        description="Short list of relevant candidate strengths."
     )
 
     weaknesses: list[str] = Field(
         default_factory=list,
-        description="Candidate weaknesses or gaps relevant to the job."
+        description="Short list of relevant candidate weaknesses or gaps."
     )
 
     missing_skills: list[str] = Field(
         default_factory=list,
-        description="Required skills that the candidate does not currently demonstrate."
+        description="Required skills that are missing from the candidate."
     )
 
     learning_potential: str = Field(
-        description="Assessment of how realistically the candidate can learn the missing skills."
+        description="Short assessment of the candidate's ability to learn missing skills."
     )
 
     recommendations: list[str] = Field(
         default_factory=list,
-        description="Recommendations for the recruiter or hiring manager."
+        description="Short practical recommendations for the hiring manager."
     )
 
     overall_assessment: str = Field(
-        description="Concise overall assessment of the candidate's suitability."
+        description="Short overall assessment of candidate suitability."
     )

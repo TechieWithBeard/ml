@@ -32,57 +32,52 @@ def parse_requirements(
             (
                 "system",
                 """
-                    You are a technical job requirement analyzer.
+You extract technical job requirements.
 
-                    Analyze the provided job description.
+Extract ONLY information explicitly stated in the job description.
 
-                    Extract ONLY information explicitly present.
+Return:
+- required_skills
+- required_experience
+- responsibilities
 
-                    Extract:
-
-                    1. Required technical skills
-                    2. Required experience
-                    3. Job responsibilities
-
-                    Do not invent requirements.
-
-                    If something is not mentioned, return an empty list.
-                """,
+Do not infer or invent anything.
+If a category is not present, return an empty list.
+""",
             ),
             (
                 "human",
-                """
-                JOB DESCRIPTION:
-
-                {job_description}
-                """,
+                "JOB DESCRIPTION:\n{job_description}",
             ),
         ]
     )
 
-    llm = get_chat_model(config).with_structured_output(
+    llm = get_chat_model(config)
+
+    structured_llm = llm.with_structured_output(
         JobRequirements
     )
 
-    chain = prompt | llm
+    chain = prompt | structured_llm
 
-    raw_result = chain.invoke(
+    result = chain.invoke(
         {
             "job_description": job_description,
         }
     )
 
-    result = cast(
-        JobRequirements,
-        raw_result,
-    )
+    print("\n========== REQUIREMENTS RESULT ==========")
+    print(result)
+    print("==========================================\n")
 
+    result = ResumeProfile.model_validate(result)
     return {
         "required_skills": result.required_skills,
         "required_experience": result.required_experience,
         "responsibilities": result.responsibilities,
     }
-
+    
+    
 @traceable
 def parse_resume(state: JobMatchState) -> dict:
 
@@ -184,8 +179,6 @@ def analyze_transferability(
 ) -> dict:
 
     missing_skills = state.get("missing_skills") or []
-    candidate_skills = state.get("candidate_skills") or []
-    candidate_experience = state.get("candidate_experience") or []
     config = state.get("config")
 
     if config is None:
@@ -477,6 +470,7 @@ def match_skills(state: JobMatchState) -> dict:
             "missing_skills": missing_skills,
         }
 
+
 @traceable
 def generate_critique(state: JobMatchState) -> dict:
 
@@ -488,122 +482,85 @@ def generate_critique(state: JobMatchState) -> dict:
         )
 
     candidate_name = state.get("candidate_name") or "Candidate"
-
     candidate_skills = state.get("candidate_skills") or []
-    candidate_experience = (
-        state.get("candidate_experience") or []
-    )
-
+    candidate_experience = state.get("candidate_experience") or []
     required_skills = state.get("required_skills") or []
-    required_experience = (
-        state.get("required_experience") or []
-    )
-
-    responsibilities = (
-        state.get("responsibilities") or []
-    )
-
+    required_experience = state.get("required_experience") or []
+    responsibilities = state.get("responsibilities") or []
     skill_matches = state.get("skill_matches") or []
     missing_skills = state.get("missing_skills") or []
-
-    transferability = (
-        state.get("transferability") or []
-    )
-
-    score = state.get("score", 0.0)
+    transferability = state.get("transferability") or []
+    score = state.get("overall_score", 0.0)
 
     prompt = f"""
-        You are a senior technical recruiter and hiring advisor.
+You are a senior technical recruiter.
 
-        Evaluate the candidate against the job requirements.
+Evaluate the candidate against the job requirements.
 
-        Your assessment must be evidence-based.
+Use ONLY the information provided below.
+Do not invent skills or experience.
 
-        Do NOT invent experience or skills.
+Candidate:
+{candidate_name}
 
-        CANDIDATE:
-        {candidate_name}
+Candidate Skills:
+{candidate_skills}
 
-        CANDIDATE SKILLS:
-        {candidate_skills}
+Candidate Experience:
+{candidate_experience}
 
-        CANDIDATE EXPERIENCE:
-        {candidate_experience}
+Required Skills:
+{required_skills}
 
-        REQUIRED SKILLS:
-        {required_skills}
+Required Experience:
+{required_experience}
 
-        REQUIRED EXPERIENCE:
-        {required_experience}
+Responsibilities:
+{responsibilities}
 
-        JOB RESPONSIBILITIES:
-        {responsibilities}
+Skill Matches:
+{skill_matches}
 
-        SKILL MATCHES:
-        {skill_matches}
+Missing Skills:
+{missing_skills}
 
-        MISSING SKILLS:
-        {missing_skills}
+Transferability:
+{transferability}
 
-        TRANSFERABILITY ANALYSIS:
-        {transferability}
+Overall Score:
+{score}
 
-        OVERALL SCORE:
-        {score}
+Return ONLY valid JSON.
 
-        Generate a professional candidate critique.
+The JSON must have exactly these fields:
 
-        Consider:
+{{
+  "strengths": [],
+  "weaknesses": [],
+  "missing_skills": [],
+  "learning_potential": "",
+  "recommendations": [],
+  "overall_assessment": ""
+}}
 
-        1. Candidate strengths
-        - Skills that directly match the job
-        - Relevant experience
-        - Relevant responsibilities
+Do not use markdown.
+Do not use ```json.
+Do not add any text before or after the JSON.
+"""
 
-        2. Candidate weaknesses
-        - Important gaps
-        - Missing required experience
-        - Missing technical skills
+    llm = get_chat_model(config)
 
-        3. Missing skills
-        - Only skills identified as missing by the matching analysis
+    # raw_result = llm.with_structured_output(Critique,prompt)
+    structured_llm = llm.with_structured_output(
+            Critique
+        ).invoke(prompt)
+        # llm = get_chat_model(config)
+    
 
-        4. Learning potential
-        - Assess whether the candidate appears capable of
-            learning the missing skills based on related skills
-            and experience.
-        - Do not assume learning ability without evidence.
-        - Use the transferability analysis when available.
-
-        5. Recommendations
-        - Should the candidate proceed to interview?
-        - What should the interviewer verify?
-        - What technical areas should be tested?
-
-        6. Overall assessment
-        - Provide a concise hiring-oriented assessment.
-
-        Be balanced.
-
-        Do not reject a candidate solely because of one missing skill
-        if the transferability analysis indicates that the skill is
-        reasonably learnable.
-
-        Return only the structured critique.
-        
-        Keep the critique concise.
-        Limit the response to approximately 300-500 words.
-        """
-
-    llm = get_chat_model(config).with_structured_output(
-        Critique
-    )
-
-    result = cast(
-        Critique,
-        llm.invoke(prompt),
-    )
+    print("\n========== CRITIQUE RAW OUTPUT ==========")
+    print(structured_llm)
+    print("==========================================\n")
 
     return {
-        "critique": result,
+        "critique": structured_llm
     }

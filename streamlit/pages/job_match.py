@@ -605,81 +605,113 @@ if analyze:
     # =====================================================
     # Critique
     # =====================================================
-
-    critique = result.get(
-        "critique"
-    )
+    critique = result.get("critique")
 
     if critique:
 
         st.divider()
 
-        st.subheader(
-            "🧠 AI Candidate Critique"
-        )
+        st.subheader("🧠 AI Candidate Critique")
 
-        # Pydantic object
-        if hasattr(
-            critique,
-            "strengths",
-        ):
+        # -------------------------------------------------
+        # Convert Pydantic model to dict if necessary
+        # -------------------------------------------------
 
-            st.markdown(
-                "### 💪 Strengths"
-            )
+        if hasattr(critique, "model_dump"):
+            critique_data = critique.model_dump()
+        elif isinstance(critique, dict):
+            critique_data = critique
+        else:
+            critique_data = {}
 
-            for item in critique.strengths:
+        # -------------------------------------------------
+        # Strengths
+        # -------------------------------------------------
 
+        st.markdown("### 💪 Strengths")
+
+        strengths = critique_data.get("strengths", [])
+
+        if strengths:
+            for item in strengths:
                 st.success(item)
+        else:
+            st.info("No specific strengths identified.")
 
+        # -------------------------------------------------
+        # Weaknesses
+        # -------------------------------------------------
 
-            st.markdown(
-                "### ⚠️ Weaknesses"
-            )
+        st.markdown("### ⚠️ Weaknesses")
 
-            for item in critique.weaknesses:
+        weaknesses = critique_data.get("weaknesses", [])
 
+        if weaknesses:
+            for item in weaknesses:
                 st.warning(item)
+        else:
+            st.success("No significant weaknesses identified.")
 
+        # -------------------------------------------------
+        # Missing Skills
+        # -------------------------------------------------
 
-            st.markdown(
-                "### 📚 Learning Potential"
-            )
+        st.markdown("### 🚨 Missing Skills")
 
-            st.write(
-                critique.learning_potential
-            )
-
-
-            st.markdown(
-                "### 💡 Recommendations"
-            )
-
-            for item in critique.recommendations:
-
-                st.info(item)
-
-
-    # =====================================================
-    # Debug information
-    # =====================================================
-
-    with st.expander(
-        "🛠️ Debug: LangGraph State"
-    ):
-
-        st.json(
-            {
-                key: (
-                    value.model_dump()
-                    if hasattr(value, "model_dump")
-                    else value
-                )
-                for key, value in result.items()
-                if key not in {
-                    "resume_text",
-                    "job_description",
-                    "config",
-                }
-            }
+        missing_skills = critique_data.get(
+            "missing_skills",
+            []
         )
+
+        if missing_skills:
+            for skill in missing_skills:
+                st.warning(skill)
+        else:
+            st.success("No missing skills identified.")
+
+        # -------------------------------------------------
+        # Learning Potential
+        # -------------------------------------------------
+
+        st.markdown("### 📚 Learning Potential")
+
+        learning_potential = critique_data.get(
+            "learning_potential"
+        )
+
+        if learning_potential:
+            st.write(learning_potential)
+        else:
+            st.info("No learning potential assessment available.")
+
+        # -------------------------------------------------
+        # Recommendations
+        # -------------------------------------------------
+
+        st.markdown("### 💡 Recommendations")
+
+        recommendations = critique_data.get(
+            "recommendations",
+            []
+        )
+
+        if recommendations:
+            for item in recommendations:
+                st.info(item)
+        else:
+            st.info("No recommendations available.")
+
+        # -------------------------------------------------
+        # Overall Assessment
+        # -------------------------------------------------
+
+        st.markdown("### 🎯 Overall Assessment")
+
+        overall_assessment = critique_data.get(
+            "overall_assessment"
+        )
+
+        if overall_assessment:
+            st.write(overall_assessment)
+        else:
+            st.info("No overall assessment available.")
