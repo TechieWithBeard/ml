@@ -62,10 +62,15 @@ def build_job_match_graph():
     )
 
     graph.add_edge(
-        "parse_resume",
+         START,
         "parse_requirements",
     )
     
+    graph.add_edge(
+            "parse_resume",
+            "match_skills",
+        )
+        
     graph.add_edge(
         "parse_requirements",
         "match_skills",

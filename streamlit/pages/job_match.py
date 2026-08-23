@@ -58,7 +58,7 @@ def get_model_config() -> ModelConfig:
             or "http://localhost:11434"
         ),
         temperature=0.0,
-        max_new_tokens=4096,
+        max_new_tokens=768,
     )
 
 

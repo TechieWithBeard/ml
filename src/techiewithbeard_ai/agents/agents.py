@@ -42,7 +42,9 @@ def get_chat_model(config: ModelConfig):
             base_url=config.ollama_url,
             temperature=config.temperature,
             num_predict=config.max_new_tokens,
-            num_ctx=16384
+            num_ctx=16384,
+            keep_alive="30m"
+            
         )
     if provider == "hugging face":
         if not config.hf_token:

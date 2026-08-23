@@ -1,14 +1,15 @@
 import json
 from typing import cast
 from langchain_core.prompts import ChatPromptTemplate
+from langsmith import traceable
 
 from techiewithbeard_ai.agents.agents import get_chat_model
-from techiewithbeard_ai.job_match.schemas import JobRequirements, ResumeProfile, TransferabilityAnalysis, Transferability, SkillMatch, Critique
+from techiewithbeard_ai.job_match.schemas import JobRequirements, ResumeProfile, SkillMatchResult, TransferabilityAnalysis, Transferability, SkillMatch, Critique
 from techiewithbeard_ai.job_match.state import JobMatchState
 from techiewithbeard_ai.schema.provider import ModelConfig
 
 
-
+@traceable
 def parse_requirements(
     state: JobMatchState,
 ) -> dict:
@@ -51,10 +52,10 @@ def parse_requirements(
             (
                 "human",
                 """
-JOB DESCRIPTION:
+                JOB DESCRIPTION:
 
-{job_description}
-""",
+                {job_description}
+                """,
             ),
         ]
     )
@@ -82,6 +83,7 @@ JOB DESCRIPTION:
         "responsibilities": result.responsibilities,
     }
 
+@traceable
 def parse_resume(state: JobMatchState) -> dict:
 
     resume_text = state.get("resume_text")
@@ -176,7 +178,7 @@ RESUME:
     
     
 
-    
+@traceable   
 def analyze_transferability(
     state: JobMatchState,
 ) -> dict:
@@ -196,62 +198,117 @@ def analyze_transferability(
             "transferability": []
         }
 
-    prompt = f"""
-            You are a technical hiring analyst.
+    prompt = """
 
-            Analyze whether this candidate could reasonably learn or transition
-            into the missing skills based ONLY on their existing skills and experience.
+    OUTPUT FORMAT:
 
-            Candidate skills:
-            {candidate_skills}
+    Return ONLY valid JSON.
 
-            Candidate experience:
-            {candidate_experience}
+    Do NOT return:
+    - Markdown
+    - headings
+    - tables
+    - explanations outside JSON
+    - code fences
+    - ```json
 
-            Missing skills:
-            {missing_skills}
+    The response MUST follow this exact structure:
 
-            For each missing skill, analyze:
+    {
+    "analyses": [
+        {
+        "missing_skill": "c#",
+        "related_skills": [
+            "TypeScript",
+            "JavaScript"
+        ],
+        "transferability_score": 65,
+        "learning_difficulty": "medium",
+        "reasoning": "The candidate has experience with strongly typed languages and therefore has transferable programming concepts."
+        }
+    ]
+    }
 
-            1. Related skills the candidate already has
-            2. Transferability score from 0-100
-            3. Learning difficulty
-            4. Reasoning
+    Rules:
 
-            Important:
+    - Return exactly one analysis for every missing skill.
+    - `missing_skill` must exactly match a skill from the missing skills list.
+    - `related_skills` must only contain skills the candidate actually has.
+    - Never claim that a related skill means the candidate already knows the missing skill.
+    - `transferability_score` must be between 0 and 100.
+    - `learning_difficulty` must be one of:
+    "low", "medium", "high".
+    - `reasoning` must be concise.
+    - Return complete, valid JSON.
+    """
+    # llm = get_chat_model(config)
 
-            - Do not assume the candidate has the missing skill.
-            - Do not invent experience.
-            - A related skill does NOT mean the candidate already possesses
-            the required skill.
-            - Consider technology similarity, conceptual similarity,
-            and existing experience.
-            """
+    # structured_llm = llm.with_structured_output(
+    #     TransferabilityAnalysis
+    # )
+    # # llm = get_chat_model(config)
 
+    # raw_result = structured_llm.invoke(prompt)
+    
+
+    # result = cast(
+    #         TransferabilityAnalysis,
+    #         raw_result,
+    #     )
+    
+    # results:list[Transferability]= []
+    # for missing_skills in result.analyses:
+    #     result = cast(
+    #         Transferability,
+    #         missing_skills
+    #     )
+    #     results.append(result)
+        
+    # return {
+    #     "transferability": results
+    # }
     llm = get_chat_model(config)
 
-    structured_llm = llm.with_structured_output(
-        Transferability
-    )
+    raw_result = llm.invoke(prompt)
 
-    results: list[Transferability] = []
+    content = raw_result.content
 
-    for skill in missing_skills:
-
-        result = cast(
-            Transferability,
-            structured_llm.invoke(
-                prompt + f"\n\nAnalyze this skill:\n{skill}"
-            ),
+    if isinstance(content, list):
+        content = "".join(
+            block.get("text", "")
+            if isinstance(block, dict)
+            else str(block)
+            for block in content
         )
 
-        results.append(result)
+    content = str(content).strip()
+
+    print("\n========== TRANSFERABILITY RAW OUTPUT ==========")
+    print(content)
+    print("===============================================\n")
+
+    if content.startswith("```"):
+        content = content.replace("```json", "")
+        content = content.replace("```", "")
+        content = content.strip()
+
+    try:
+        data = json.loads(content)
+
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            "Transferability analyzer returned invalid JSON.\n\n"
+            f"Raw model output:\n{content}\n\n"
+            f"JSON error: {exc}"
+        ) from exc
+
+    result = TransferabilityAnalysis.model_validate(data)
 
     return {
-        "transferability": results
+        "transferability": result.analyses,
     }
     
-    
+@traceable  
 def calculate_score(
     state: JobMatchState,
 ) -> dict:
@@ -307,7 +364,7 @@ def calculate_score(
     }
     
     
-
+@traceable
 def match_skills(state: JobMatchState) -> dict:
 
     required_skills = state.get("required_skills") or []
@@ -328,86 +385,99 @@ def match_skills(state: JobMatchState) -> dict:
 
     structured_llm = get_chat_model(
         config
-    ).with_structured_output(SkillMatch)
+    ).with_structured_output(SkillMatchResult)
 
-    matches: list[SkillMatch] = []
 
-    for requirement in required_skills:
+    prompt = f"""
+            You are a technical skill matching agent.
 
-        prompt = f"""
-You are a technical skill matching agent.
+            Compare ALL required skills against the candidate's listed skills.
 
-Determine whether a candidate has a specific required skill.
+            CANDIDATE SKILLS:
+            {candidate_skills}
 
-CANDIDATE SKILLS:
-{candidate_skills}
+            REQUIRED SKILLS:
+            {required_skills}
 
-REQUIRED SKILL:
-{requirement}
+            Rules:
 
-Rules:
+            - Return exactly ONE SkillMatch for every required skill.
+            - Match common technology naming variations.
 
-- Match exact skills.
-- Match common technology naming variations.
+            Examples:
+            Angular == angular == Angular.js
+            React == React.js
+            Node == Node.js
+            .NET == .NET Core
 
-Examples:
-Angular == angular == Angular.js
-React == React.js
-Node == Node.js
-.NET == .NET Core
+            Do not infer unrelated skills.
 
-Do not infer unrelated skills.
+            Examples:
 
-Examples:
+            Angular != React
+            JavaScript != TypeScript
+            Azure != AWS
 
-Angular != React
-JavaScript != TypeScript
-Azure != AWS
+            Only mark `matched=true` when the candidate's listed skills
+            provide reasonable evidence.
 
-Only mark `matched=true` when the candidate's listed skills
-provide reasonable evidence.
+            If matched:
+            - provide concise evidence
+            - confidence between 0 and 1
 
-If matched:
-- provide concise evidence
-- confidence between 0 and 1
+            If not matched:
+            - evidence must be null
+            - confidence should reflect your confidence that the skill
+            is genuinely missing
 
-If not matched:
-- evidence must be null
-- confidence should reflect your confidence that the skill
-  is genuinely missing
+            Return exactly one SkillMatch.
+            """
 
-Return exactly one SkillMatch.
-"""
-
-        result = cast(
-            SkillMatch,
+    result = cast(
+            SkillMatchResult,
             structured_llm.invoke(prompt),
         )
+    matches = result.matches
+    
+     # Make sure the model didn't invent requirements.
+    required_lookup = {
+        skill.lower(): skill
+        for skill in required_skills
+    }
+    
+    valid_matches: list[SkillMatch] = []
 
-        # Don't allow the LLM to change the requirement.
-        result.requirement = requirement
+    for match in matches:
 
-        matches.append(result)
+        normalized = match.requirement.lower()
+
+        if normalized not in required_lookup:
+            continue
+
+        # Preserve the original requirement from the job.
+        match.requirement = required_lookup[normalized]
+
+        valid_matches.append(match)
 
     matching_skills = [
         match.requirement
-        for match in matches
+        for match in valid_matches
         if match.matched
     ]
 
     missing_skills = [
         match.requirement
-        for match in matches
+        for match in valid_matches
         if not match.matched
     ]
-
+    
     return {
-        "skill_matches": matches,
-        "matching_skills": matching_skills,
-        "missing_skills": missing_skills,
-    }
+            "skill_matches": valid_matches,
+            "matching_skills": matching_skills,
+            "missing_skills": missing_skills,
+        }
 
-
+@traceable
 def generate_critique(state: JobMatchState) -> dict:
 
     config = state.get("config")
@@ -443,84 +513,87 @@ def generate_critique(state: JobMatchState) -> dict:
     score = state.get("score", 0.0)
 
     prompt = f"""
-You are a senior technical recruiter and hiring advisor.
+        You are a senior technical recruiter and hiring advisor.
 
-Evaluate the candidate against the job requirements.
+        Evaluate the candidate against the job requirements.
 
-Your assessment must be evidence-based.
+        Your assessment must be evidence-based.
 
-Do NOT invent experience or skills.
+        Do NOT invent experience or skills.
 
-CANDIDATE:
-{candidate_name}
+        CANDIDATE:
+        {candidate_name}
 
-CANDIDATE SKILLS:
-{candidate_skills}
+        CANDIDATE SKILLS:
+        {candidate_skills}
 
-CANDIDATE EXPERIENCE:
-{candidate_experience}
+        CANDIDATE EXPERIENCE:
+        {candidate_experience}
 
-REQUIRED SKILLS:
-{required_skills}
+        REQUIRED SKILLS:
+        {required_skills}
 
-REQUIRED EXPERIENCE:
-{required_experience}
+        REQUIRED EXPERIENCE:
+        {required_experience}
 
-JOB RESPONSIBILITIES:
-{responsibilities}
+        JOB RESPONSIBILITIES:
+        {responsibilities}
 
-SKILL MATCHES:
-{skill_matches}
+        SKILL MATCHES:
+        {skill_matches}
 
-MISSING SKILLS:
-{missing_skills}
+        MISSING SKILLS:
+        {missing_skills}
 
-TRANSFERABILITY ANALYSIS:
-{transferability}
+        TRANSFERABILITY ANALYSIS:
+        {transferability}
 
-OVERALL SCORE:
-{score}
+        OVERALL SCORE:
+        {score}
 
-Generate a professional candidate critique.
+        Generate a professional candidate critique.
 
-Consider:
+        Consider:
 
-1. Candidate strengths
-   - Skills that directly match the job
-   - Relevant experience
-   - Relevant responsibilities
+        1. Candidate strengths
+        - Skills that directly match the job
+        - Relevant experience
+        - Relevant responsibilities
 
-2. Candidate weaknesses
-   - Important gaps
-   - Missing required experience
-   - Missing technical skills
+        2. Candidate weaknesses
+        - Important gaps
+        - Missing required experience
+        - Missing technical skills
 
-3. Missing skills
-   - Only skills identified as missing by the matching analysis
+        3. Missing skills
+        - Only skills identified as missing by the matching analysis
 
-4. Learning potential
-   - Assess whether the candidate appears capable of
-     learning the missing skills based on related skills
-     and experience.
-   - Do not assume learning ability without evidence.
-   - Use the transferability analysis when available.
+        4. Learning potential
+        - Assess whether the candidate appears capable of
+            learning the missing skills based on related skills
+            and experience.
+        - Do not assume learning ability without evidence.
+        - Use the transferability analysis when available.
 
-5. Recommendations
-   - Should the candidate proceed to interview?
-   - What should the interviewer verify?
-   - What technical areas should be tested?
+        5. Recommendations
+        - Should the candidate proceed to interview?
+        - What should the interviewer verify?
+        - What technical areas should be tested?
 
-6. Overall assessment
-   - Provide a concise hiring-oriented assessment.
+        6. Overall assessment
+        - Provide a concise hiring-oriented assessment.
 
-Be balanced.
+        Be balanced.
 
-Do not reject a candidate solely because of one missing skill
-if the transferability analysis indicates that the skill is
-reasonably learnable.
+        Do not reject a candidate solely because of one missing skill
+        if the transferability analysis indicates that the skill is
+        reasonably learnable.
 
-Return only the structured critique.
-"""
+        Return only the structured critique.
+        
+        Keep the critique concise.
+        Limit the response to approximately 300-500 words.
+        """
 
     llm = get_chat_model(config).with_structured_output(
         Critique
