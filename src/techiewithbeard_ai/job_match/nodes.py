@@ -60,17 +60,14 @@ If a category is not present, return an empty list.
 
     chain = prompt | structured_llm
 
-    result = chain.invoke(
+    result = cast(
+    JobRequirements,
+    chain.invoke(
         {
             "job_description": job_description,
         }
-    )
+    ))
 
-    print("\n========== REQUIREMENTS RESULT ==========")
-    print(result)
-    print("==========================================\n")
-
-    result = ResumeProfile.model_validate(result)
     return {
         "required_skills": result.required_skills,
         "required_experience": result.required_experience,

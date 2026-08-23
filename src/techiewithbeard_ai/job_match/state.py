@@ -1,5 +1,5 @@
 from typing import TypedDict
-from techiewithbeard_ai.job_match.schemas import SkillMatch, Transferability, Critique
+from techiewithbeard_ai.job_match.schemas import Experience, SkillMatch, Transferability, Critique
 from techiewithbeard_ai.schema.provider import ModelConfig
 
 class JobMatchState(TypedDict, total=False):
@@ -12,7 +12,7 @@ class JobMatchState(TypedDict, total=False):
     # Resume
     candidate_name: str | None
     candidate_skills: list[str]
-    candidate_experience: list[str]
+    candidate_experience: list[Experience]
 
     # Job requirements
     required_skills: list[str]
