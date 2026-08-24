@@ -7,7 +7,7 @@ from techiewithbeard_ai.agents.agents import get_chat_model
 from techiewithbeard_ai.job_match.schemas import JobRequirements, ResumeProfile, SkillMatchResult, TransferabilityAnalysis, Transferability, SkillMatch, Critique
 from techiewithbeard_ai.job_match.state import JobMatchState
 from techiewithbeard_ai.schema.provider import ModelConfig
-
+from langchain_core.output_parsers import PydanticOutputParser
 
 @traceable
 def parse_requirements(
@@ -54,12 +54,12 @@ If a category is not present, return an empty list.
 
     llm = get_chat_model(config)
 
-    structured_llm = llm.with_structured_output(
-        JobRequirements,
-        method="json_schema",
+    structured_llm = PydanticOutputParser(
+        pydantic_object=JobRequirements,
     )
 
-    chain = prompt | structured_llm
+
+    chain = prompt|llm | structured_llm
 
     result = cast(
     JobRequirements,
@@ -374,10 +374,14 @@ def match_skills(state: JobMatchState) -> dict:
             "missing_skills": [],
         }
 
-    structured_llm = get_chat_model(
+    llm = get_chat_model(
         config
-    ).with_structured_output(SkillMatchResult,
-    method="json_schema",)
+    )
+    
+    structured_llm = PydanticOutputParser(
+            pydantic_object=SkillMatchResult,
+        )
+    
 
 
     prompt = f"""
@@ -550,9 +554,8 @@ Do not add any text before or after the JSON.
     llm = get_chat_model(config)
 
     # raw_result = llm.with_structured_output(Critique,prompt)
-    structured_llm = llm.with_structured_output(
-            Critique,
-            method="json_schema",
+    structured_llm = PydanticOutputParser(
+            pydantic_object=Critique
         ).invoke(prompt)
         # llm = get_chat_model(config)
     
