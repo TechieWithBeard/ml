@@ -552,7 +552,7 @@ Do not add any text before or after the JSON.
 """
 
     llm = get_chat_model(config)
-
+ 
     # raw_result = llm.with_structured_output(Critique,prompt)
     structured_llm = PydanticOutputParser(
             pydantic_object=Critique
