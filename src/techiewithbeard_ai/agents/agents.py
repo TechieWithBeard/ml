@@ -52,10 +52,11 @@ def get_chat_model(config: ModelConfig):
                 "Hugging Face token is required."
             )
         llm = HuggingFaceEndpoint(
-                model=config.chat_model,
-                huggingfacehub_api_token=config.hf_token.get_secret_value(),
-                    temperature=0.0,
-                    max_new_tokens=1024,
+                   model=config.chat_model,
+                   huggingfacehub_api_token=config.hf_token.get_secret_value(),
+                   temperature=0.0,
+                   max_new_tokens=1024,
+                   
                 )
 
         return ChatHuggingFace(

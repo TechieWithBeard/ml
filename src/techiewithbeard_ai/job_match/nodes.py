@@ -55,7 +55,8 @@ If a category is not present, return an empty list.
     llm = get_chat_model(config)
 
     structured_llm = llm.with_structured_output(
-        JobRequirements
+        JobRequirements,
+        method="json_schema",
     )
 
     chain = prompt | structured_llm
@@ -375,7 +376,8 @@ def match_skills(state: JobMatchState) -> dict:
 
     structured_llm = get_chat_model(
         config
-    ).with_structured_output(SkillMatchResult)
+    ).with_structured_output(SkillMatchResult,
+    method="json_schema",)
 
 
     prompt = f"""
@@ -549,7 +551,8 @@ Do not add any text before or after the JSON.
 
     # raw_result = llm.with_structured_output(Critique,prompt)
     structured_llm = llm.with_structured_output(
-            Critique
+            Critique,
+            method="json_schema",
         ).invoke(prompt)
         # llm = get_chat_model(config)
     
