@@ -10,8 +10,6 @@ from techiewithbeard_ai.schema.provider import ModelConfig
 from langchain_core.output_parsers import JsonOutputParser, PydanticOutputParser
 
 
-
-
 @traceable
 def parse_requirements(
     state: JobMatchState,
@@ -33,67 +31,86 @@ def parse_requirements(
     parser = PydanticOutputParser(
         pydantic_object=JobRequirements,
     )
+
     prompt = ChatPromptTemplate.from_messages(
         [
             (
                 "system",
                 """
-    You are a resume information extraction system.
+You are a technical job requirements extraction system.
 
-    Extract information ONLY from the resume.
+Extract information ONLY from the job description provided by the user.
 
-    Return ONLY a valid JSON object.
+Return ONLY a valid JSON object.
 
-    The JSON MUST have exactly these fields:
+The JSON MUST have exactly these fields:
 
-    {{
-    "candidate_name": null,
-    "skills": [],
-    "experience": []
-    }}
+{{
+  "required_skills": [],
+  "required_experience": [],
+  "responsibilities": []
+}}
 
-    Rules:
+Rules:
 
-    - candidate_name must be the candidate's full name if explicitly present.
-    - Use null if the name is not present.
-    - skills must contain only technical skills explicitly mentioned.
-    - experience must contain only work experience explicitly mentioned.
-    - Do NOT infer skills.
-    - Do NOT invent experience.
-    - Do NOT add fields.
-    - Use [] when there is no information.
-    - Use null when candidate_name is unavailable.
-    - Do NOT use Markdown.
-    - Do NOT use ```json.
-    - Do NOT add explanations.
-    - The response must start with {{ and end with }}.
+- required_skills:
+  Include only technical skills, technologies, frameworks,
+  programming languages, tools, platforms, databases, and
+  other technical requirements explicitly mentioned.
 
-    Example:
+- required_experience:
+  Include only experience requirements explicitly stated
+  in the job description.
 
-    {{
-    "candidate_name": "John Doe",
-    "skills": [
-        "Python",
-        "FastAPI",
-        "React"
-    ],
-    "experience": [
-        "Senior Software Engineer at ABC",
-        "Software Engineer at XYZ"
-    ]
-    }}
-    """,
+- responsibilities:
+  Include only responsibilities explicitly stated in the
+  job description.
+
+- Do NOT infer requirements.
+- Do NOT invent skills.
+- Do NOT assume experience that is not explicitly stated.
+- Do NOT add fields.
+- If a category is not present, return [].
+- Keep the extracted information concise.
+- Preserve the meaning of the original job description.
+- Do NOT use Markdown.
+- Do NOT use ```json.
+- Do NOT add explanations before or after the JSON.
+
+The response must start with {{ and end with }}.
+
+Example:
+
+{{
+  "required_skills": [
+    "Angular",
+    "TypeScript",
+    "RxJS",
+    "Nx",
+    "Azure"
+  ],
+  "required_experience": [
+    "5+ years of frontend development experience",
+    "Experience building enterprise web applications"
+  ],
+  "responsibilities": [
+    "Develop and maintain Angular applications",
+    "Collaborate with cross-functional teams"
+  ]
+}}
+
+{format_instructions}
+""",
             ),
             (
                 "human",
                 """
-    RESUME:
+JOB DESCRIPTION:
 
-    {resume_text}
-    """,
+{job_description}
+""",
             ),
         ]
-
     ).partial(
         format_instructions=parser.get_format_instructions(),
     )
@@ -120,9 +137,9 @@ def parse_requirements(
         "required_experience": result.required_experience,
         "responsibilities": result.responsibilities,
     }
-
-
-
+    
+    
+    
 @traceable
 def parse_resume(
     state: JobMatchState,
@@ -150,37 +167,38 @@ def parse_resume(
                 """
 You are a resume information extraction system.
 
-Extract information ONLY from the resume.
+Extract information ONLY from the resume provided by the user.
 
 Return ONLY a valid JSON object.
 
 The JSON MUST have exactly these fields:
 
-{
+{{
   "candidate_name": null,
   "skills": [],
   "experience": []
-}
+}}
 
 Rules:
 
 - candidate_name must be the candidate's full name if explicitly present.
-- Use null if the name is not present.
-- skills must contain only technical skills explicitly mentioned.
-- experience must contain only work experience explicitly mentioned.
+- Use null if the name is not explicitly present.
+- skills must contain only technical skills explicitly mentioned in the resume.
+- experience must contain only work experience explicitly mentioned in the resume.
 - Do NOT infer skills.
 - Do NOT invent experience.
-- Do NOT add fields.
-- Use [] when there is no information.
+- Do NOT add fields that are not part of the schema.
+- Use [] when no skills or experience are found.
 - Use null when candidate_name is unavailable.
 - Do NOT use Markdown.
 - Do NOT use ```json.
-- Do NOT add explanations.
-- The response must start with { and end with }.
+- Do NOT add explanations before or after the JSON.
+- Return complete and valid JSON.
+- The response must start with {{ and end with }}.
 
 Example:
 
-{
+{{
   "candidate_name": "John Doe",
   "skills": [
     "Python",
@@ -191,7 +209,7 @@ Example:
     "Senior Software Engineer at ABC",
     "Software Engineer at XYZ"
   ]
-}
+}}
 """,
             ),
             (
@@ -219,11 +237,11 @@ RESUME:
     except Exception as exc:
 
         print("\n========== RESUME PARSING ERROR ==========")
-        print(exc)
+        print(repr(exc))
         print("==========================================\n")
 
         raise ValueError(
-            "The Hugging Face model did not return valid JSON "
+            "The model did not return valid JSON "
             "for resume extraction."
         ) from exc
 
@@ -231,14 +249,26 @@ RESUME:
     print(data)
     print("========================================\n")
 
-    result = ResumeProfile.model_validate(data)
+    try:
+        result = ResumeProfile.model_validate(data)
+
+    except Exception as exc:
+
+        print("\n========== RESUME VALIDATION ERROR ==========")
+        print(repr(exc))
+        print("=============================================\n")
+
+        raise ValueError(
+            "Resume JSON does not match the ResumeProfile schema."
+        ) from exc
 
     return {
         "candidate_name": result.candidate_name,
         "candidate_skills": result.skills,
         "candidate_experience": result.experience,
     }
-
+    
+    
 @traceable
 def analyze_transferability(
     state: JobMatchState,
