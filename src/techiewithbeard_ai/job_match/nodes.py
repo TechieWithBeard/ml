@@ -33,35 +33,67 @@ def parse_requirements(
     parser = PydanticOutputParser(
         pydantic_object=JobRequirements,
     )
-
     prompt = ChatPromptTemplate.from_messages(
         [
             (
                 "system",
                 """
-You extract technical job requirements.
+    You are a resume information extraction system.
 
-Extract ONLY information explicitly stated in the job description.
+    Extract information ONLY from the resume.
 
-Extract:
-- required_skills
-- required_experience
-- responsibilities
+    Return ONLY a valid JSON object.
 
-Rules:
-- Do not infer or invent information.
-- Only extract information explicitly stated.
-- If a category is not present, return an empty list.
-- Do not add fields that are not part of the required schema.
+    The JSON MUST have exactly these fields:
 
-{format_instructions}
-""",
+    {{
+    "candidate_name": null,
+    "skills": [],
+    "experience": []
+    }}
+
+    Rules:
+
+    - candidate_name must be the candidate's full name if explicitly present.
+    - Use null if the name is not present.
+    - skills must contain only technical skills explicitly mentioned.
+    - experience must contain only work experience explicitly mentioned.
+    - Do NOT infer skills.
+    - Do NOT invent experience.
+    - Do NOT add fields.
+    - Use [] when there is no information.
+    - Use null when candidate_name is unavailable.
+    - Do NOT use Markdown.
+    - Do NOT use ```json.
+    - Do NOT add explanations.
+    - The response must start with {{ and end with }}.
+
+    Example:
+
+    {{
+    "candidate_name": "John Doe",
+    "skills": [
+        "Python",
+        "FastAPI",
+        "React"
+    ],
+    "experience": [
+        "Senior Software Engineer at ABC",
+        "Software Engineer at XYZ"
+    ]
+    }}
+    """,
             ),
             (
                 "human",
-                "JOB DESCRIPTION:\n{job_description}",
+                """
+    RESUME:
+
+    {resume_text}
+    """,
             ),
         ]
+
     ).partial(
         format_instructions=parser.get_format_instructions(),
     )
