@@ -7,7 +7,7 @@ from techiewithbeard_ai.agents.agents import get_chat_model
 from techiewithbeard_ai.job_match.schemas import JobRequirements, ResumeProfile, SkillMatchResult, TransferabilityAnalysis, Transferability, SkillMatch, Critique
 from techiewithbeard_ai.job_match.state import JobMatchState
 from techiewithbeard_ai.schema.provider import ModelConfig
-from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.output_parsers import JsonOutputParser, PydanticOutputParser
 
 
 
@@ -90,12 +90,6 @@ Rules:
     }
 
 
-from typing import cast
-
-from langchain_core.output_parsers import PydanticOutputParser
-from langchain_core.prompts import ChatPromptTemplate
-from langsmith import traceable
-
 
 @traceable
 def parse_resume(
@@ -115,9 +109,7 @@ def parse_resume(
             "Model configuration is missing from graph state."
         )
 
-    parser = PydanticOutputParser(
-        pydantic_object=ResumeProfile,
-    )
+    parser = JsonOutputParser()
 
     prompt = ChatPromptTemplate.from_messages(
         [
@@ -126,21 +118,48 @@ def parse_resume(
                 """
 You are a resume information extraction system.
 
-Extract information from the resume below.
+Extract information ONLY from the resume.
 
-Extract ONLY information explicitly stated in the resume.
+Return ONLY a valid JSON object.
+
+The JSON MUST have exactly these fields:
+
+{
+  "candidate_name": null,
+  "skills": [],
+  "experience": []
+}
 
 Rules:
 
-- candidate_name: Extract the candidate's full name if explicitly present.
-- skills: Extract technical skills explicitly mentioned.
-- experience: Extract work experience explicitly mentioned.
-- Do not invent information.
-- Do not infer skills, technologies, companies, roles, or experience.
-- Do not add fields that are not part of the required schema.
-- If information is not present, return the appropriate empty/null value.
+- candidate_name must be the candidate's full name if explicitly present.
+- Use null if the name is not present.
+- skills must contain only technical skills explicitly mentioned.
+- experience must contain only work experience explicitly mentioned.
+- Do NOT infer skills.
+- Do NOT invent experience.
+- Do NOT add fields.
+- Use [] when there is no information.
+- Use null when candidate_name is unavailable.
+- Do NOT use Markdown.
+- Do NOT use ```json.
+- Do NOT add explanations.
+- The response must start with { and end with }.
 
-{format_instructions}
+Example:
+
+{
+  "candidate_name": "John Doe",
+  "skills": [
+    "Python",
+    "FastAPI",
+    "React"
+  ],
+  "experience": [
+    "Senior Software Engineer at ABC",
+    "Software Engineer at XYZ"
+  ]
+}
 """,
             ),
             (
@@ -152,33 +171,41 @@ RESUME:
 """,
             ),
         ]
-    ).partial(
-        format_instructions=parser.get_format_instructions(),
     )
 
     llm = get_chat_model(config)
 
     chain = prompt | llm | parser
 
-    result = cast(
-        ResumeProfile,
-        chain.invoke(
+    try:
+        data = chain.invoke(
             {
                 "resume_text": resume_text,
             }
-        ),
-    )
+        )
 
-    print("\n========== RESUME OUTPUT ==========")
-    print(result)
-    print("===================================\n")
+    except Exception as exc:
+
+        print("\n========== RESUME PARSING ERROR ==========")
+        print(exc)
+        print("==========================================\n")
+
+        raise ValueError(
+            "The Hugging Face model did not return valid JSON "
+            "for resume extraction."
+        ) from exc
+
+    print("\n========== RESUME JSON OUTPUT ==========")
+    print(data)
+    print("========================================\n")
+
+    result = ResumeProfile.model_validate(data)
 
     return {
         "candidate_name": result.candidate_name,
         "candidate_skills": result.skills,
         "candidate_experience": result.experience,
     }
-    
 
 @traceable
 def analyze_transferability(
