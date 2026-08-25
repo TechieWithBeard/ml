@@ -9,6 +9,9 @@ from techiewithbeard_ai.job_match.state import JobMatchState
 from techiewithbeard_ai.schema.provider import ModelConfig
 from langchain_core.output_parsers import PydanticOutputParser
 
+
+
+
 @traceable
 def parse_requirements(
     state: JobMatchState,
@@ -27,6 +30,10 @@ def parse_requirements(
             "Model configuration is missing from graph state."
         )
 
+    parser = PydanticOutputParser(
+        pydantic_object=JobRequirements,
+    )
+
     prompt = ChatPromptTemplate.from_messages(
         [
             (
@@ -36,13 +43,18 @@ You extract technical job requirements.
 
 Extract ONLY information explicitly stated in the job description.
 
-Return:
+Extract:
 - required_skills
 - required_experience
 - responsibilities
 
-Do not infer or invent anything.
-If a category is not present, return an empty list.
+Rules:
+- Do not infer or invent information.
+- Only extract information explicitly stated.
+- If a category is not present, return an empty list.
+- Do not add fields that are not part of the required schema.
+
+{format_instructions}
 """,
             ),
             (
@@ -50,34 +62,45 @@ If a category is not present, return an empty list.
                 "JOB DESCRIPTION:\n{job_description}",
             ),
         ]
+    ).partial(
+        format_instructions=parser.get_format_instructions(),
     )
 
     llm = get_chat_model(config)
 
-    structured_llm = PydanticOutputParser(
-        pydantic_object=JobRequirements,
-    )
-
-
-    chain = prompt|llm | structured_llm
+    chain = prompt | llm | parser
 
     result = cast(
-    JobRequirements,
-    chain.invoke(
-        {
-            "job_description": job_description,
-        }
-    ))
+        JobRequirements,
+        chain.invoke(
+            {
+                "job_description": job_description,
+            }
+        ),
+    )
+
+    print("\n========== REQUIREMENTS OUTPUT ==========")
+    print(result)
+    print("=========================================\n")
 
     return {
         "required_skills": result.required_skills,
         "required_experience": result.required_experience,
         "responsibilities": result.responsibilities,
     }
-    
-    
+
+
+from typing import cast
+
+from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langsmith import traceable
+
+
 @traceable
-def parse_resume(state: JobMatchState) -> dict:
+def parse_resume(
+    state: JobMatchState,
+) -> dict:
 
     resume_text = state.get("resume_text")
     config = state.get("config")
@@ -92,76 +115,63 @@ def parse_resume(state: JobMatchState) -> dict:
             "Model configuration is missing from graph state."
         )
 
-    prompt = f"""
+    parser = PydanticOutputParser(
+        pydantic_object=ResumeProfile,
+    )
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                """
 You are a resume information extraction system.
 
 Extract information from the resume below.
 
-Return ONLY a JSON object.
-
-The JSON must have EXACTLY these fields:
-
-{{
-  "candidate_name": null,
-  "skills": [],
-  "experience": []
-}}
+Extract ONLY information explicitly stated in the resume.
 
 Rules:
 
-- candidate_name: candidate's full name.
-- skills: technical skills explicitly mentioned.
-- experience: work experience explicitly mentioned.
+- candidate_name: Extract the candidate's full name if explicitly present.
+- skills: Extract technical skills explicitly mentioned.
+- experience: Extract work experience explicitly mentioned.
 - Do not invent information.
-- Do not infer skills.
-- Do not add additional fields.
-- Do not use markdown.
-- Do not use ```json.
-- Make sure the JSON is COMPLETE and properly closed.
+- Do not infer skills, technologies, companies, roles, or experience.
+- Do not add fields that are not part of the required schema.
+- If information is not present, return the appropriate empty/null value.
 
+{format_instructions}
+""",
+            ),
+            (
+                "human",
+                """
 RESUME:
 
 {resume_text}
-"""
+""",
+            ),
+        ]
+    ).partial(
+        format_instructions=parser.get_format_instructions(),
+    )
 
     llm = get_chat_model(config)
 
-    raw_result = llm.invoke(prompt)
+    chain = prompt | llm | parser
 
-    content = raw_result.content
+    result = cast(
+        ResumeProfile,
+        chain.invoke(
+            {
+                "resume_text": resume_text,
+            }
+        ),
+    )
 
-    if isinstance(content, list):
-        content = "".join(
-            block.get("text", "")
-            if isinstance(block, dict)
-            else str(block)
-            for block in content
-        )
-
-    content = str(content).strip()
-
-    print("\n========== RESUME LLM OUTPUT ==========")
-    print(content)
-    print("=======================================\n")
-
-    # Remove markdown fences if the model adds them.
-    if content.startswith("```"):
-        content = content.replace("```json", "")
-        content = content.replace("```", "")
-        content = content.strip()
-
-    try:
-        
-        data = json.loads(content)
-
-    except json.JSONDecodeError as exc:
-        raise ValueError(
-            "Resume parser returned invalid JSON.\n\n"
-            f"Raw model output:\n{content}\n\n"
-            f"JSON error: {exc}"
-        ) from exc
-
-    result = ResumeProfile.model_validate(data)
+    print("\n========== RESUME OUTPUT ==========")
+    print(result)
+    print("===================================\n")
 
     return {
         "candidate_name": result.candidate_name,
@@ -169,14 +179,14 @@ RESUME:
         "candidate_experience": result.experience,
     }
     
-    
 
-@traceable   
+@traceable
 def analyze_transferability(
     state: JobMatchState,
 ) -> dict:
 
     missing_skills = state.get("missing_skills") or []
+    candidate_skills = state.get("candidate_skills") or []
     config = state.get("config")
 
     if config is None:
@@ -189,115 +199,136 @@ def analyze_transferability(
             "transferability": []
         }
 
-    prompt = """
+    parser = PydanticOutputParser(
+        pydantic_object=TransferabilityAnalysis,
+    )
 
-    OUTPUT FORMAT:
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                """
+You are a technical skills transferability analyzer.
 
-    Return ONLY valid JSON.
+Your job is to analyze how transferable the candidate's existing
+skills are to each missing skill.
 
-    Do NOT return:
-    - Markdown
-    - headings
-    - tables
-    - explanations outside JSON
-    - code fences
-    - ```json
+IMPORTANT:
 
-    The response MUST follow this exact structure:
+You MUST return ALL fields defined in the output schema.
 
-    {
-    "analyses": [
-        {
-        "missing_skill": "c#",
-        "related_skills": [
-            "TypeScript",
-            "JavaScript"
-        ],
-        "transferability_score": 65,
-        "learning_difficulty": "medium",
-        "reasoning": "The candidate has experience with strongly typed languages and therefore has transferable programming concepts."
-        }
-    ]
-    }
+Every analysis object MUST contain EXACTLY these fields:
 
-    Rules:
+- missing_skill
+- related_skills
+- transferability_score
+- learning_difficulty
+- reasoning
 
-    - Return exactly one analysis for every missing skill.
-    - `missing_skill` must exactly match a skill from the missing skills list.
-    - `related_skills` must only contain skills the candidate actually has.
-    - Never claim that a related skill means the candidate already knows the missing skill.
-    - `transferability_score` must be between 0 and 100.
-    - `learning_difficulty` must be one of:
-    "low", "medium", "high".
-    - `reasoning` must be concise.
-    - Return complete, valid JSON.
-    """
-    # llm = get_chat_model(config)
+Never omit any of these fields.
 
-    # structured_llm = llm.with_structured_output(
-    #     TransferabilityAnalysis
-    # )
-    # # llm = get_chat_model(config)
+Candidate skills:
 
-    # raw_result = structured_llm.invoke(prompt)
-    
+{candidate_skills}
 
-    # result = cast(
-    #         TransferabilityAnalysis,
-    #         raw_result,
-    #     )
-    
-    # results:list[Transferability]= []
-    # for missing_skills in result.analyses:
-    #     result = cast(
-    #         Transferability,
-    #         missing_skills
-    #     )
-    #     results.append(result)
-        
-    # return {
-    #     "transferability": results
-    # }
+Missing skills:
+
+{missing_skills}
+
+Rules:
+
+1. Return exactly one analysis for every missing skill.
+
+2. `missing_skill` must exactly match one of the provided missing skills.
+
+3. `related_skills` may ONLY contain skills from the candidate's
+   existing skills list.
+
+4. Never claim that a related skill means the candidate already knows
+   the missing skill.
+
+5. `transferability_score` must ALWAYS be an integer from 0 to 100.
+
+6. `learning_difficulty` must ALWAYS be one of:
+   "low"
+   "medium"
+   "high"
+
+7. `reasoning` must ALWAYS be present and concise.
+
+8. If there are no related skills, return:
+
+"related_skills": []
+
+9. Do not invent candidate skills.
+
+10. Do not omit fields.
+
+11. Do not add fields.
+
+For example, if the missing skill is C++ and the candidate has
+TypeScript and JavaScript, the response MUST look like:
+
+{{
+  "analyses": [
+    {{
+      "missing_skill": "C++",
+      "related_skills": [
+        "TypeScript",
+        "JavaScript"
+      ],
+      "transferability_score": 65,
+      "learning_difficulty": "medium",
+      "reasoning": "The candidate has experience with programming languages that provide transferable programming concepts."
+    }}
+  ]
+}}
+
+{format_instructions}
+""",
+            ),
+            (
+                "human",
+                """
+Candidate skills:
+
+{candidate_skills}
+
+Missing skills:
+
+{missing_skills}
+
+Return the complete JSON response now.
+""",
+            ),
+        ]
+    ).partial(
+        format_instructions=parser.get_format_instructions(),
+    )
+
     llm = get_chat_model(config)
 
-    raw_result = llm.invoke(prompt)
+    chain = prompt | llm | parser
 
-    content = raw_result.content
+    result = cast(
+        TransferabilityAnalysis,
+        chain.invoke(
+            {
+                "candidate_skills": candidate_skills,
+                "missing_skills": missing_skills,
+            }
+        ),
+    )
 
-    if isinstance(content, list):
-        content = "".join(
-            block.get("text", "")
-            if isinstance(block, dict)
-            else str(block)
-            for block in content
-        )
-
-    content = str(content).strip()
-
-    print("\n========== TRANSFERABILITY RAW OUTPUT ==========")
-    print(content)
-    print("===============================================\n")
-
-    if content.startswith("```"):
-        content = content.replace("```json", "")
-        content = content.replace("```", "")
-        content = content.strip()
-
-    try:
-        data = json.loads(content)
-
-    except json.JSONDecodeError as exc:
-        raise ValueError(
-            "Transferability analyzer returned invalid JSON.\n\n"
-            f"Raw model output:\n{content}\n\n"
-            f"JSON error: {exc}"
-        ) from exc
-
-    result = TransferabilityAnalysis.model_validate(data)
+    print("\n========== TRANSFERABILITY OUTPUT ==========")
+    print(result)
+    print("============================================\n")
 
     return {
         "transferability": result.analyses,
     }
+
+
     
 @traceable  
 def calculate_score(
@@ -374,86 +405,133 @@ def match_skills(state: JobMatchState) -> dict:
             "missing_skills": [],
         }
 
-    llm = get_chat_model(
-        config
+    parser = PydanticOutputParser(
+        pydantic_object=SkillMatchResult,
     )
-    
-    structured_llm = PydanticOutputParser(
-            pydantic_object=SkillMatchResult,
-        )
-    
 
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                """
+You are a technical skill matching agent.
 
-    prompt = f"""
-            You are a technical skill matching agent.
+Compare ALL required skills against the candidate's listed skills.
 
-            Compare ALL required skills against the candidate's listed skills.
+Candidate Skills:
+{candidate_skills}
 
-            CANDIDATE SKILLS:
-            {candidate_skills}
+Required Skills:
+{required_skills}
 
-            REQUIRED SKILLS:
-            {required_skills}
+Rules:
 
-            Rules:
+- Return exactly ONE SkillMatch for every required skill.
+- The `requirement` field must correspond to a skill from the
+  required skills list.
+- Match common technology naming variations.
 
-            - Return exactly ONE SkillMatch for every required skill.
-            - Match common technology naming variations.
+Examples:
 
-            Examples:
-            Angular == angular == Angular.js
-            React == React.js
-            Node == Node.js
-            .NET == .NET Core
+Angular == angular == Angular.js
+React == React.js
+Node == Node.js
+.NET == .NET Core
 
-            Do not infer unrelated skills.
+Do not infer unrelated skills.
 
-            Examples:
+Examples:
 
-            Angular != React
-            JavaScript != TypeScript
-            Azure != AWS
+Angular != React
+JavaScript != TypeScript
+Azure != AWS
 
-            Only mark `matched=true` when the candidate's listed skills
-            provide reasonable evidence.
+Only mark `matched=true` when the candidate's listed skills
+provide reasonable evidence.
 
-            If matched:
-            - provide concise evidence
-            - confidence between 0 and 1
+If matched:
 
-            If not matched:
-            - evidence must be null
-            - confidence should reflect your confidence that the skill
-            is genuinely missing
+- provide concise evidence
+- confidence must be between 0 and 1
 
-            Return exactly one SkillMatch.
-            """
+If not matched:
+
+- evidence must be null
+- confidence should reflect your confidence that the skill
+  is genuinely missing
+
+Do not invent candidate skills.
+
+Do not invent required skills.
+
+Return exactly one SkillMatch for every required skill.
+
+{format_instructions}
+""",
+            ),
+            (
+                "human",
+                """
+Candidate skills:
+
+{candidate_skills}
+
+Required skills:
+
+{required_skills}
+""",
+            ),
+        ]
+    ).partial(
+        format_instructions=parser.get_format_instructions(),
+    )
+
+    llm = get_chat_model(config)
+
+    chain = prompt | llm | parser
 
     result = cast(
-            SkillMatchResult,
-            structured_llm.invoke(prompt),
-        )
+        SkillMatchResult,
+        chain.invoke(
+            {
+                "candidate_skills": candidate_skills,
+                "required_skills": required_skills,
+            }
+        ),
+    )
+
+    print("\n========== SKILL MATCH OUTPUT ==========")
+    print(result)
+    print("========================================\n")
+
     matches = result.matches
-    
-     # Make sure the model didn't invent requirements.
+
+    # ---------------------------------------------------------
+    # Validate model output against the original requirements.
+    # ---------------------------------------------------------
+
     required_lookup = {
-        skill.lower(): skill
+        skill.strip().lower(): skill
         for skill in required_skills
     }
-    
+
     valid_matches: list[SkillMatch] = []
 
     for match in matches:
 
-        normalized = match.requirement.lower()
+        normalized = match.requirement.strip().lower()
 
         if normalized not in required_lookup:
             continue
 
-        # Preserve the original requirement from the job.
+        # Preserve the exact requirement from the job description.
         match.requirement = required_lookup[normalized]
 
         valid_matches.append(match)
+
+    # ---------------------------------------------------------
+    # Build matching / missing skill lists.
+    # ---------------------------------------------------------
 
     matching_skills = [
         match.requirement
@@ -466,13 +544,12 @@ def match_skills(state: JobMatchState) -> dict:
         for match in valid_matches
         if not match.matched
     ]
-    
-    return {
-            "skill_matches": valid_matches,
-            "matching_skills": matching_skills,
-            "missing_skills": missing_skills,
-        }
 
+    return {
+        "skill_matches": valid_matches,
+        "matching_skills": matching_skills,
+        "missing_skills": missing_skills,
+    }
 
 @traceable
 def generate_critique(state: JobMatchState) -> dict:
@@ -495,7 +572,15 @@ def generate_critique(state: JobMatchState) -> dict:
     transferability = state.get("transferability") or []
     score = state.get("overall_score", 0.0)
 
-    prompt = f"""
+    parser = PydanticOutputParser(
+        pydantic_object=Critique,
+    )
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                """
 You are a senior technical recruiter.
 
 Evaluate the candidate against the job requirements.
@@ -533,37 +618,41 @@ Transferability:
 Overall Score:
 {score}
 
-Return ONLY valid JSON.
-
-The JSON must have exactly these fields:
-
-{{
-  "strengths": [],
-  "weaknesses": [],
-  "missing_skills": [],
-  "learning_potential": "",
-  "recommendations": [],
-  "overall_assessment": ""
-}}
+{format_instructions}
 
 Do not use markdown.
 Do not use ```json.
 Do not add any text before or after the JSON.
-"""
+""",
+            )
+        ]
+    ).partial(
+        format_instructions=parser.get_format_instructions()
+    )
 
     llm = get_chat_model(config)
- 
-    # raw_result = llm.with_structured_output(Critique,prompt)
-    structured_llm = PydanticOutputParser(
-            pydantic_object=Critique
-        ).invoke(prompt)
-        # llm = get_chat_model(config)
-    
 
-    print("\n========== CRITIQUE RAW OUTPUT ==========")
-    print(structured_llm)
-    print("==========================================\n")
+    chain = prompt | llm | parser
+
+    result = chain.invoke(
+        {
+            "candidate_name": candidate_name,
+            "candidate_skills": candidate_skills,
+            "candidate_experience": candidate_experience,
+            "required_skills": required_skills,
+            "required_experience": required_experience,
+            "responsibilities": responsibilities,
+            "skill_matches": skill_matches,
+            "missing_skills": missing_skills,
+            "transferability": transferability,
+            "score": score,
+        }
+    )
+
+    print("\n========== CRITIQUE OUTPUT ==========")
+    print(result)
+    print("=====================================\n")
 
     return {
-        "critique": structured_llm
+        "critique": result,
     }
