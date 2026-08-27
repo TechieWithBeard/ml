@@ -32,86 +32,37 @@ def parse_requirements(
         pydantic_object=JobRequirements,
     )
 
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                """
-You are a technical job requirements extraction system.
+    prompt = ChatPromptTemplate.from_messages([
+        (
+            "system",
+            """
+    You are a technical job requirements extraction system.
 
-Extract information ONLY from the job description provided by the user.
+    Extract information ONLY from the job description.
 
-Return ONLY a valid JSON object.
+    Rules:
 
-The JSON MUST have exactly these fields:
+    - required_skills: technical skills, technologies, frameworks,
+    programming languages, tools, platforms, databases, and other
+    technical requirements explicitly mentioned.
+    - required_experience: experience requirements explicitly stated.
+    - responsibilities: responsibilities explicitly stated.
+    - Do NOT infer or invent information.
+    - If a category is not present, return an empty list.
+    - Keep extracted items concise.
 
-{{
-  "required_skills": [],
-  "required_experience": [],
-  "responsibilities": []
-}}
+    {format_instructions}
+    """,
+        ),
+        (
+            "human",
+            """
+    JOB DESCRIPTION:
 
-Rules:
-
-- required_skills:
-  Include only technical skills, technologies, frameworks,
-  programming languages, tools, platforms, databases, and
-  other technical requirements explicitly mentioned.
-
-- required_experience:
-  Include only experience requirements explicitly stated
-  in the job description.
-
-- responsibilities:
-  Include only responsibilities explicitly stated in the
-  job description.
-
-- Do NOT infer requirements.
-- Do NOT invent skills.
-- Do NOT assume experience that is not explicitly stated.
-- Do NOT add fields.
-- If a category is not present, return [].
-- Keep the extracted information concise.
-- Preserve the meaning of the original job description.
-- Do NOT use Markdown.
-- Do NOT use ```json.
-- Do NOT add explanations before or after the JSON.
-
-The response must start with {{ and end with }}.
-
-Example:
-
-{{
-  "required_skills": [
-    "Angular",
-    "TypeScript",
-    "RxJS",
-    "Nx",
-    "Azure"
-  ],
-  "required_experience": [
-    "5+ years of frontend development experience",
-    "Experience building enterprise web applications"
-  ],
-  "responsibilities": [
-    "Develop and maintain Angular applications",
-    "Collaborate with cross-functional teams"
-  ]
-}}
-
-{format_instructions}
-""",
-            ),
-            (
-                "human",
-                """
-JOB DESCRIPTION:
-
-{job_description}
-""",
-            ),
-        ]
-    ).partial(
+    {job_description}
+    """,
+        ),
+    ]).partial(
         format_instructions=parser.get_format_instructions(),
     )
 

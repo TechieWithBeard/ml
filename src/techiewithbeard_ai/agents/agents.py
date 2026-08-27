@@ -56,7 +56,7 @@ def get_chat_model(config: ModelConfig):
                    huggingfacehub_api_token=config.hf_token.get_secret_value(),
                    temperature=0.0,
                    max_new_tokens=1024,
-                   
+                   do_sample=False,
                 )
 
         return ChatHuggingFace(
