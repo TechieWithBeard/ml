@@ -50,6 +50,8 @@ def parse_requirements(
     - Do NOT infer or invent information.
     - If a category is not present, return an empty list.
     - Keep extracted items concise.
+    - Return complete and valid JSON.
+    - The response must start with {{ and end with }}.
 
     {format_instructions}
     """,

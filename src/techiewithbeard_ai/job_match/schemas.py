@@ -79,7 +79,8 @@ class SkillMatch(BaseModel):
 
 class SkillMatchResult(BaseModel):
     matches: list[SkillMatch] = Field(
-        default_factory=list
+        default_factory=list,
+        description="List of skill match results for each job requirement."
     )
 
 
