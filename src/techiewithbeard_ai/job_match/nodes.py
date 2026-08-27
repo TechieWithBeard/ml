@@ -135,7 +135,7 @@ Rules:
 - candidate_name must be the candidate's full name if explicitly present.
 - Use null if the name is not explicitly present.
 - skills must contain only technical skills explicitly mentioned in the resume.
-- experience must contain only work experience explicitly mentioned in the resume.
+- experience must be a list of structured work experience objects.
 - Do NOT infer skills.
 - Do NOT invent experience.
 - Do NOT add fields that are not part of the schema.
@@ -157,8 +157,18 @@ Example:
     "React"
   ],
   "experience": [
-    "Senior Software Engineer at ABC",
-    "Software Engineer at XYZ"
+    {{
+      "title": "Senior Software Engineer",
+      "company": "ABC",
+      "start_date": "2022",
+      "end_date": "Present"
+    }},
+    {{
+      "title": "Software Engineer",
+      "company": "XYZ",
+      "start_date": "2020",
+      "end_date": "2022"
+    }}
   ]
 }}
 """,
