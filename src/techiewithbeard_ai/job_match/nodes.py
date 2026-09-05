@@ -1,14 +1,14 @@
-import json
 from typing import cast
 from langchain_core.prompts import ChatPromptTemplate
 from langsmith import traceable
 
 from techiewithbeard_ai.agents.agents import get_chat_model
-from techiewithbeard_ai.job_match.schemas import JobRequirements, ResumeProfile, SkillMatchResult, TransferabilityAnalysis, Transferability, SkillMatch, Critique
+from techiewithbeard_ai.job_match.schemas import JobRequirements, ResumeDocument, ResumeTailoring, SkillMatchResult, TransferabilityAnalysis, Transferability, SkillMatch, Critique
 from techiewithbeard_ai.job_match.state import JobMatchState
 from techiewithbeard_ai.schema.provider import ModelConfig
-from langchain_core.output_parsers import JsonOutputParser, PydanticOutputParser
+from langchain_core.output_parsers import PydanticOutputParser
 
+SKILL_MATCH_BATCH_SIZE = 5
 
 @traceable
 def parse_requirements(
@@ -93,6 +93,145 @@ def parse_requirements(
     
     
     
+# @traceable
+# def parse_resume(
+#     state: JobMatchState,
+# ) -> dict:
+
+#     resume_text = state.get("resume_text")
+#     config = state.get("config")
+
+#     if not resume_text:
+#         raise ValueError(
+#             "Resume text is missing from graph state."
+#         )
+
+#     if config is None:
+#         raise ValueError(
+#             "Model configuration is missing from graph state."
+#         )
+
+#     parser = JsonOutputParser()
+
+#     prompt = ChatPromptTemplate.from_messages(
+#         [
+#             (
+#                 "system",
+#                 """
+# You are a resume information extraction system.
+
+# Extract information ONLY from the resume provided by the user.
+
+# Return ONLY a valid JSON object.
+
+# The JSON MUST have exactly these fields:
+
+# {{
+#   "candidate_name": null,
+#   "skills": [],
+#   "experience": []
+# }}
+
+# Rules:
+
+# - candidate_name must be the candidate's full name if explicitly present.
+# - Use null if the name is not explicitly present.
+# - skills must contain only technical skills explicitly mentioned in the resume.
+# - experience must be a list of structured work experience objects.
+# - Do NOT infer skills.
+# - Do NOT invent experience.
+# - Do NOT add fields that are not part of the schema.
+# - Use [] when no skills or experience are found.
+# - Use null when candidate_name is unavailable.
+# - Do NOT use Markdown.
+# - Do NOT use ```json.
+# - Do NOT add explanations before or after the JSON.
+# - Return complete and valid JSON.
+# - The response must start with {{ and end with }}.
+
+# Example:
+
+# {{
+#   "candidate_name": "John Doe",
+#   "skills": [
+#     "Python",
+#     "FastAPI",
+#     "React"
+#   ],
+#   "experience": [
+#     {{
+#       "title": "Senior Software Engineer",
+#       "company": "ABC",
+#       "start_date": "2022",
+#       "end_date": "Present"
+#     }},
+#     {{
+#       "title": "Software Engineer",
+#       "company": "XYZ",
+#       "start_date": "2020",
+#       "end_date": "2022"
+#     }}
+#   ]
+# }}
+# """,
+#             ),
+#             (
+#                 "human",
+#                 """
+# RESUME:
+
+# {resume_text}
+# """,
+#             ),
+#         ]
+#     )
+
+#     llm = get_chat_model(config)
+
+#     chain = prompt | llm | parser
+
+#     try:
+#         data = chain.invoke(
+#             {
+#                 "resume_text": resume_text,
+#             }
+#         )
+
+#     except Exception as exc:
+
+#         print("\n========== RESUME PARSING ERROR ==========")
+#         print(repr(exc))
+#         print("==========================================\n")
+
+#         raise ValueError(
+#             "The model did not return valid JSON "
+#             "for resume extraction."
+#         ) from exc
+
+#     print("\n========== RESUME JSON OUTPUT ==========")
+#     print(data)
+#     print("========================================\n")
+
+#     try:
+#         result = ResumeProfile.model_validate(data)
+
+#     except Exception as exc:
+
+#         print("\n========== RESUME VALIDATION ERROR ==========")
+#         print(repr(exc))
+#         print("=============================================\n")
+
+#         raise ValueError(
+#             "Resume JSON does not match the ResumeProfile schema."
+#         ) from exc
+
+#     return {
+#         "candidate_name": result.candidate_name,
+#         "candidate_skills": result.skills,
+#         "candidate_experience": result.experience,
+#     }
+    
+    
 @traceable
 def parse_resume(
     state: JobMatchState,
@@ -111,69 +250,43 @@ def parse_resume(
             "Model configuration is missing from graph state."
         )
 
-    parser = JsonOutputParser()
+    parser = PydanticOutputParser(
+        pydantic_object=ResumeDocument
+    )
 
     prompt = ChatPromptTemplate.from_messages(
         [
             (
                 "system",
                 """
-You are a resume information extraction system.
+You are a resume extraction system.
 
-Extract information ONLY from the resume provided by the user.
+Convert the provided resume text into the
+ResumeDocument schema.
 
-Return ONLY a valid JSON object.
+IMPORTANT:
 
-The JSON MUST have exactly these fields:
+The resume is the ONLY source of truth.
 
-{{
-  "candidate_name": null,
-  "skills": [],
-  "experience": []
-}}
+Extract information exactly from the resume.
 
-Rules:
+Do NOT:
+- invent information
+- infer missing skills
+- invent dates
+- invent achievements
+- invent companies
+- invent contact information
+- add technologies not present
 
-- candidate_name must be the candidate's full name if explicitly present.
-- Use null if the name is not explicitly present.
-- skills must contain only technical skills explicitly mentioned in the resume.
-- experience must be a list of structured work experience objects.
-- Do NOT infer skills.
-- Do NOT invent experience.
-- Do NOT add fields that are not part of the schema.
-- Use [] when no skills or experience are found.
-- Use null when candidate_name is unavailable.
-- Do NOT use Markdown.
-- Do NOT use ```json.
-- Do NOT add explanations before or after the JSON.
-- Return complete and valid JSON.
-- The response must start with {{ and end with }}.
+Preserve the original meaning and wording.
 
-Example:
+If information does not exist:
+- use null for optional scalar fields
+- use [] for lists
 
-{{
-  "candidate_name": "John Doe",
-  "skills": [
-    "Python",
-    "FastAPI",
-    "React"
-  ],
-  "experience": [
-    {{
-      "title": "Senior Software Engineer",
-      "company": "ABC",
-      "start_date": "2022",
-      "end_date": "Present"
-    }},
-    {{
-      "title": "Software Engineer",
-      "company": "XYZ",
-      "start_date": "2020",
-      "end_date": "2022"
-    }}
-  ]
-}}
-""",
+{format_instructions}
+"""
             ),
             (
                 "human",
@@ -181,53 +294,38 @@ Example:
 RESUME:
 
 {resume_text}
-""",
+"""
             ),
         ]
+    ).partial(
+        format_instructions=parser.get_format_instructions()
     )
 
     llm = get_chat_model(config)
 
     chain = prompt | llm | parser
 
-    try:
-        data = chain.invoke(
-            {
-                "resume_text": resume_text,
-            }
-        )
+    result = chain.invoke(
+        {
+            "resume_text": resume_text,
+        }
+    )
 
-    except Exception as exc:
-
-        print("\n========== RESUME PARSING ERROR ==========")
-        print(repr(exc))
-        print("==========================================\n")
-
-        raise ValueError(
-            "The model did not return valid JSON "
-            "for resume extraction."
-        ) from exc
-
-    print("\n========== RESUME JSON OUTPUT ==========")
-    print(data)
-    print("========================================\n")
-
-    try:
-        result = ResumeProfile.model_validate(data)
-
-    except Exception as exc:
-
-        print("\n========== RESUME VALIDATION ERROR ==========")
-        print(repr(exc))
-        print("=============================================\n")
-
-        raise ValueError(
-            "Resume JSON does not match the ResumeProfile schema."
-        ) from exc
+    print("\n========== RESUME DOCUMENT ==========")
+    print(result)
+    print("=====================================\n")
 
     return {
+        "resume_document": result,
+
+        # Keep these because your existing
+        # job-match nodes already depend on them.
         "candidate_name": result.candidate_name,
-        "candidate_skills": result.skills,
+        "candidate_skills": [
+            skill
+            for group in result.skills
+            for skill in group.skills
+        ],
         "candidate_experience": result.experience,
     }
     
@@ -422,7 +520,7 @@ def calculate_score(
     )
 
     return {
-        "skills_score": round(skills_score, 2),
+        "skill_score": round(skills_score, 2),
         "experience_score": round(
             experience_score,
             2,
@@ -437,25 +535,14 @@ def calculate_score(
         ),
     }
     
-    
-@traceable
-def match_skills(state: JobMatchState) -> dict:
-
-    required_skills = state.get("required_skills") or []
-    candidate_skills = state.get("candidate_skills") or []
-    config = state.get("config")
-
-    if config is None:
-        raise ValueError(
-            "Model configuration is missing from graph state."
-        )
-
-    if not required_skills:
-        return {
-            "skill_matches": [],
-            "matching_skills": [],
-            "missing_skills": [],
-        }
+ 
+ 
+ 
+def match_skill_batch(
+    llm,
+    candidate_skills: list[str],
+    required_skills: list[str],
+) -> SkillMatchResult:
 
     parser = PydanticOutputParser(
         pydantic_object=SkillMatchResult,
@@ -468,13 +555,7 @@ def match_skills(state: JobMatchState) -> dict:
                 """
 You are a technical skill matching agent.
 
-Compare ALL required skills against the candidate's listed skills.
-
-Candidate Skills:
-{candidate_skills}
-
-Required Skills:
-{required_skills}
+Compare the candidate's skills against the required skills.
 
 Rules:
 
@@ -502,18 +583,14 @@ Only mark `matched=true` when the candidate's listed skills
 provide reasonable evidence.
 
 If matched:
-
 - provide concise evidence
 - confidence must be between 0 and 1
 
 If not matched:
-
 - evidence must be null
-- confidence should reflect your confidence that the skill
-  is genuinely missing
+- confidence must be between 0 and 1
 
 Do not invent candidate skills.
-
 Do not invent required skills.
 
 Return exactly one SkillMatch for every required skill.
@@ -538,8 +615,6 @@ Required skills:
         format_instructions=parser.get_format_instructions(),
     )
 
-    llm = get_chat_model(config)
-
     chain = prompt | llm | parser
 
     result = cast(
@@ -552,14 +627,107 @@ Required skills:
         ),
     )
 
-    print("\n========== SKILL MATCH OUTPUT ==========")
-    print(result)
-    print("========================================\n")
+    return result
 
-    matches = result.matches
+   
+   
+   
+@traceable
+def match_skills(state: JobMatchState) -> dict:
+
+    required_skills = state.get("required_skills") or []
+    candidate_skills = state.get("candidate_skills") or []
+    config = state.get("config")
+
+    if config is None:
+        raise ValueError(
+            "Model configuration is missing from graph state."
+        )
+
+    if not required_skills:
+        return {
+            "skill_matches": [],
+            "matching_skills": [],
+            "missing_skills": [],
+        }
+
+    llm = get_chat_model(config)
 
     # ---------------------------------------------------------
-    # Validate model output against the original requirements.
+    # Split required skills into batches.
+    # ---------------------------------------------------------
+
+    batches = [
+        required_skills[
+            i:i + SKILL_MATCH_BATCH_SIZE
+        ]
+        for i in range(
+            0,
+            len(required_skills),
+            SKILL_MATCH_BATCH_SIZE,
+        )
+    ]
+
+    print("\n========== SKILL MATCH BATCHING ==========")
+    print(
+        f"Required skills: {len(required_skills)}"
+    )
+    print(
+        f"Batch size: {SKILL_MATCH_BATCH_SIZE}"
+    )
+    print(
+        f"Number of batches: {len(batches)}"
+    )
+    print("==========================================\n")
+
+    all_matches: list[SkillMatch] = []
+
+    # ---------------------------------------------------------
+    # Process each batch.
+    # ---------------------------------------------------------
+
+    for batch_number, batch in enumerate(
+        batches,
+        start=1,
+    ):
+
+        print(
+            f"\n========== SKILL MATCH BATCH "
+            f"{batch_number}/{len(batches)} =========="
+        )
+
+        print("Required skills:")
+        for skill in batch:
+            print(f"  - {skill}")
+
+        try:
+
+            result = match_skill_batch(
+                llm=llm,
+                candidate_skills=candidate_skills,
+                required_skills=batch,
+            )
+
+        except Exception as exc:
+
+            print(
+                f"\n========== BATCH {batch_number} FAILED =========="
+            )
+            print(repr(exc))
+            print("===============================================\n")
+
+            raise ValueError(
+                f"Skill matching failed for batch "
+                f"{batch_number}/{len(batches)}."
+            ) from exc
+
+        print("\nBatch result:")
+        print(result)
+
+        all_matches.extend(result.matches)
+
+    # ---------------------------------------------------------
+    # Validate model output.
     # ---------------------------------------------------------
 
     required_lookup = {
@@ -569,17 +737,44 @@ Required skills:
 
     valid_matches: list[SkillMatch] = []
 
-    for match in matches:
+    for match in all_matches:
 
-        normalized = match.requirement.strip().lower()
+        normalized = (
+            match.requirement.strip().lower()
+        )
 
         if normalized not in required_lookup:
             continue
 
-        # Preserve the exact requirement from the job description.
-        match.requirement = required_lookup[normalized]
+        # Preserve exact requirement from job description.
+        match.requirement = (
+            required_lookup[normalized]
+        )
 
         valid_matches.append(match)
+
+    # ---------------------------------------------------------
+    # Make sure the model returned every requirement.
+    # ---------------------------------------------------------
+
+    returned_requirements = {
+        match.requirement.strip().lower()
+        for match in valid_matches
+    }
+
+    missing_from_model = [
+        skill
+        for skill in required_skills
+        if skill.strip().lower()
+        not in returned_requirements
+    ]
+
+    if missing_from_model:
+
+        raise ValueError(
+            "Model did not return matches for: "
+            + ", ".join(missing_from_model)
+        )
 
     # ---------------------------------------------------------
     # Build matching / missing skill lists.
@@ -597,11 +792,29 @@ Required skills:
         if not match.matched
     ]
 
+    # ---------------------------------------------------------
+    # Final output.
+    # ---------------------------------------------------------
+
+    print("\n========== FINAL SKILL MATCH OUTPUT ==========")
+    print(
+        f"Total matches: {len(valid_matches)}"
+    )
+    print(
+        f"Matching skills: {matching_skills}"
+    )
+    print(
+        f"Missing skills: {missing_skills}"
+    )
+    print("==============================================\n")
+
     return {
         "skill_matches": valid_matches,
         "matching_skills": matching_skills,
         "missing_skills": missing_skills,
     }
+    
+    
 
 @traceable
 def generate_critique(state: JobMatchState) -> dict:
@@ -707,4 +920,523 @@ Do not add any text before or after the JSON.
 
     return {
         "critique": result,
+    }
+    
+    
+
+@traceable
+def tailor_resume(
+    state: JobMatchState,
+) -> dict:
+
+    resume_document = state.get("resume_document")
+    job_description = state.get("job_description")
+    required_skills = state.get("required_skills") or []
+    required_experience = state.get("required_experience") or []
+    responsibilities = state.get("responsibilities") or []
+    skill_matches = state.get("skill_matches") or []
+    missing_skills = state.get("missing_skills") or []
+    critique = state.get("critique")
+    config = state.get("config")
+
+    if resume_document is None:
+        raise ValueError(
+            "ResumeDocument is missing from graph state."
+        )
+
+    if not job_description:
+        raise ValueError(
+            "Job description is missing from graph state."
+        )
+
+    if config is None:
+        raise ValueError(
+            "Model configuration is missing from graph state."
+        )
+
+    parser = PydanticOutputParser(
+        pydantic_object=ResumeTailoring
+    )
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                """
+You are a professional resume tailoring specialist.
+
+Your task is to identify ONLY the changes that would
+improve an existing resume for a target job.
+
+IMPORTANT:
+
+The original ResumeDocument is the SINGLE SOURCE
+OF TRUTH.
+
+You are NOT creating a new resume.
+
+You are returning ONLY proposed changes.
+
+==================================================
+ALLOWED CHANGES
+==================================================
+
+You may:
+
+1. Improve the professional headline.
+2. Improve the professional summary.
+3. Rewrite existing experience bullets.
+4. Reorder existing experience bullets when relevant.
+5. Reorder existing skill groups to emphasize relevant
+   groups for the target job.
+
+==================================================
+STRICT FACTUAL RULES
+==================================================
+
+DO NOT invent:
+
+- Skills
+- Technologies
+- Frameworks
+- Companies
+- Job titles
+- Dates
+- Responsibilities
+- Achievements
+- Certifications
+- Projects
+- Education
+
+DO NOT add missing skills.
+
+DO NOT create new experience.
+
+DO NOT remove experience.
+
+DO NOT create new bullets.
+
+The tailored resume must never contain a
+new factual claim that is not supported by
+the original ResumeDocument.
+
+==================================================
+EXACT BULLET MATCHING
+==================================================
+
+For every BulletChange:
+
+1. `original` MUST be copied EXACTLY from the
+   original ResumeDocument.
+2. `original` MUST be a complete existing bullet.
+3. Do NOT truncate the original bullet.
+4. Do NOT summarize the original bullet.
+5. Do NOT paraphrase the original field.
+6. Do NOT change punctuation in the original field.
+7. Do NOT change numbers or percentages.
+8. The original value MUST exactly match one
+   existing bullet in the source resume.
+
+The `revised` value may improve wording, clarity,
+keyword alignment, and emphasis, but must preserve
+the facts contained in the original bullet.
+
+==================================================
+HEADLINE RULES
+==================================================
+
+The headline may be improved to better position
+the candidate for the target role.
+
+However:
+
+- Do not invent seniority.
+- Do not claim expertise not supported by the resume.
+- Do not introduce technologies not present.
+- Do not change the candidate into a different role.
+
+==================================================
+SUMMARY RULES
+==================================================
+
+The summary may be rewritten to better emphasize
+experience relevant to the job.
+
+It must remain fully supported by the original
+ResumeDocument.
+
+Do not introduce new experience or skills.
+
+==================================================
+SKILL GROUP ORDER
+==================================================
+
+`skill_groups_order` must contain ONLY exact
+category names already present in:
+
+ResumeDocument.skills[].category
+
+Do not return individual skill names.
+
+Do not create new categories.
+
+Do not add skills.
+
+Do not remove skills.
+
+Only recommend the ordering of existing skill groups.
+
+==================================================
+MISSING SKILLS
+==================================================
+
+If a required skill is missing from the original
+resume, DO NOT add it.
+
+Example:
+
+Original:
+Angular
+TypeScript
+JavaScript
+
+Job requirement:
+Electron
+
+DO NOT add Electron to the resume.
+
+==================================================
+OUTPUT RULES
+==================================================
+
+Return ONLY the proposed changes.
+
+Do NOT return a complete ResumeDocument.
+
+Do NOT return unchanged sections.
+
+If no change is required:
+
+- headline = null
+- summary = null
+- experience = []
+- skill_groups_order = []
+
+{format_instructions}
+"""
+            ),
+            (
+                "human",
+                """
+ORIGINAL RESUME:
+
+{resume_document}
+
+JOB DESCRIPTION:
+
+{job_description}
+
+REQUIRED SKILLS:
+
+{required_skills}
+
+REQUIRED EXPERIENCE:
+
+{required_experience}
+
+RESPONSIBILITIES:
+
+{responsibilities}
+
+SKILL MATCH ANALYSIS:
+
+{skill_matches}
+
+MISSING SKILLS:
+
+{missing_skills}
+
+RECRUITER CRITIQUE:
+
+{critique}
+
+Return ONLY the proposed resume changes.
+"""
+            ),
+        ]
+    ).partial(
+        format_instructions=parser.get_format_instructions()
+    )
+
+    llm = get_chat_model(config)
+
+    chain = prompt | llm | parser
+
+    result = cast(
+        ResumeTailoring,
+        chain.invoke(
+            {
+                "resume_document": resume_document.model_dump(),
+                "job_description": job_description,
+                "required_skills": required_skills,
+                "required_experience": required_experience,
+                "responsibilities": responsibilities,
+                "skill_matches": skill_matches,
+                "missing_skills": missing_skills,
+                "critique": critique,
+            }
+        ),
+    )
+
+    print("\n========== RESUME TAILORING ==========")
+    print(result)
+    print("======================================\n")
+
+    return {
+        "resume_tailoring": result,
+    }
+
+
+def apply_resume_tailoring(
+    resume: ResumeDocument,
+    tailoring: ResumeTailoring,
+) -> ResumeDocument:
+
+    updated = resume.model_copy(deep=True)
+
+    # =========================================================
+    # Headline
+    # =========================================================
+
+    if tailoring.headline:
+        updated.headline = tailoring.headline.strip()
+
+    # =========================================================
+    # Summary
+    # =========================================================
+
+    if tailoring.summary:
+        updated.summary = tailoring.summary.strip()
+
+    # =========================================================
+    # Experience bullet changes
+    # =========================================================
+
+    for experience_change in tailoring.experience:
+
+        matched_experience = None
+
+        for experience in updated.experience:
+
+            if (
+                experience.company.strip().lower()
+                == experience_change.company.strip().lower()
+            ):
+                matched_experience = experience
+                break
+
+        if matched_experience is None:
+
+            print(
+                "\n⚠️ TAILORING WARNING"
+            )
+            print(
+                "Experience company was not found:"
+            )
+            print(
+                experience_change.company
+            )
+
+            continue
+
+        for bullet_change in experience_change.bullet_changes:
+
+            original_bullet = bullet_change.original.strip()
+            revised_bullet = bullet_change.revised.strip()
+
+            found = False
+
+            for index, existing_bullet in enumerate(
+                matched_experience.bullets
+            ):
+
+                if existing_bullet.strip() == original_bullet:
+
+                    matched_experience.bullets[index] = (
+                        revised_bullet
+                    )
+
+                    found = True
+                    break
+
+            if not found:
+
+                print(
+                    "\n⚠️ TAILORING WARNING"
+                )
+                print(
+                    f"Company: {matched_experience.company}"
+                )
+                print(
+                    "Original bullet was not found:"
+                )
+                print(
+                    repr(bullet_change.original)
+                )
+
+    # =========================================================
+    # Skill group ordering
+    # =========================================================
+
+    if tailoring.skill_groups_order:
+
+        existing_groups = {
+            group.category.strip().lower(): group
+            for group in updated.skills
+        }
+
+        reordered_groups = []
+
+        # Add AI-requested groups first.
+        for category in tailoring.skill_groups_order:
+
+            normalized_category = (
+                category.strip().lower()
+            )
+
+            group = existing_groups.get(
+                normalized_category
+            )
+
+            if group is None:
+                print(
+                    "\n⚠️ TAILORING WARNING"
+                )
+                print(
+                    "Skill group was not found:"
+                )
+                print(
+                    category
+                )
+                continue
+
+            if group not in reordered_groups:
+                reordered_groups.append(group)
+
+        # Preserve groups AI did not mention.
+        for group in updated.skills:
+
+            if group not in reordered_groups:
+                reordered_groups.append(group)
+
+        updated.skills = reordered_groups
+
+    return updated
+
+
+def validate_resume_preservation(
+    original: ResumeDocument,
+    tailored: ResumeDocument,
+) -> None:
+
+    if len(original.experience) != len(
+        tailored.experience
+    ):
+        raise ValueError(
+            "Resume tailoring changed the number "
+            "of experience entries."
+        )
+
+    if len(original.education) != len(
+        tailored.education
+    ):
+        raise ValueError(
+            "Resume tailoring changed education."
+        )
+
+    if len(original.projects) != len(
+        tailored.projects
+    ):
+        raise ValueError(
+            "Resume tailoring changed projects."
+        )
+
+    if len(original.certifications) != len(
+        tailored.certifications
+    ):
+        raise ValueError(
+            "Resume tailoring changed certifications."
+        )
+        
+ 
+def validate_resume_document(
+    resume: ResumeDocument,
+) -> None:
+
+    if not resume.candidate_name:
+        raise ValueError(
+            "Resume has no candidate name."
+        )
+
+    if not resume.experience:
+        raise ValueError(
+            "Resume contains no experience."
+        )
+
+    for index, job in enumerate(
+        resume.experience,
+        start=1,
+    ):
+
+        if not job.company:
+            raise ValueError(
+                f"Experience #{index} has no company."
+            )
+
+        if not job.title:
+            raise ValueError(
+                f"Experience #{index} has no title."
+            )
+
+        if not job.bullets:
+            print(
+                f"⚠️ Experience #{index} has no bullets: "
+                f"{job.company}"
+            )       
+        
+
+@traceable
+def apply_tailoring(
+    state: JobMatchState,
+) -> dict:
+
+    resume_document = state.get("resume_document")
+    resume_tailoring = state.get("resume_tailoring")
+
+    if resume_document is None:
+        raise ValueError(
+            "ResumeDocument is missing."
+        )
+
+    if resume_tailoring is None:
+        raise ValueError(
+            "ResumeTailoring is missing."
+        )
+
+    tailored_resume = apply_resume_tailoring(
+        resume_document,
+        resume_tailoring,
+    )
+
+    validate_resume_preservation(
+        resume_document,
+        tailored_resume,
+    )
+
+    print("\n========== TAILORED RESUME ==========")
+    print(tailored_resume)
+    print("=====================================\n")
+
+    return {
+        "tailored_resume": tailored_resume,
     }

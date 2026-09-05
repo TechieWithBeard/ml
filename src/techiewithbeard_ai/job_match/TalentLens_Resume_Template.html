@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>{{ resume.candidate_name }} | {{ resume.headline or "Frontend Engineer" }}</title>
+
+    <style>
+        /*
+         * TalentLens Resume Template
+         * Reference: Vishnu Thankappan 2026 PDF
+         *
+         * Font family:
+         *   Primary: Clear Sans
+         *   Secondary: Open Sans
+         *
+         * The reference PDF embeds Clear Sans and Open Sans.
+         * This template uses those font names and falls back to
+         * system sans-serif fonts when they are unavailable.
+         */
+
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        :root {
+            --resume-blue: #3d6f8d;
+            --resume-black: #111111;
+            --resume-text: #171717;
+            --resume-muted: #666666;
+            --resume-border: #111111;
+            --resume-page-width: 210mm;
+            --resume-page-height: 297mm;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            background: #e9e9e9;
+        }
+
+        body {
+            font-family:
+                -apple-system,
+                BlinkMacSystemFont,
+                "Segoe UI",
+                Roboto,
+                "Clear Sans",
+                "Open Sans",
+                Arial,
+                Helvetica,
+                sans-serif;
+            color: var(--resume-text);
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        .resume-document {
+            width: var(--resume-page-width);
+            margin: 0 auto;
+        }
+
+        .page {
+            position: relative;
+            width: var(--resume-page-width);
+            min-height: var(--resume-page-height);
+            height: var(--resume-page-height);
+
+            padding:
+                14.2mm
+                10.5mm
+                12mm
+                10.5mm;
+
+            background: #ffffff;
+
+            overflow: hidden;
+        }
+
+        .page + .page {
+            margin-top: 12px;
+        }
+
+        /* =====================================================
+           HEADER
+           ===================================================== */
+
+        .resume-header {
+            margin: 0;
+        }
+
+        .candidate-name {
+            margin: 0;
+
+            font-family:
+                "Clear Sans",
+                "Open Sans",
+                Arial,
+                Helvetica,
+                sans-serif;
+
+            font-size: 24px;
+            line-height: 1.0;
+            font-weight: 700;
+
+            letter-spacing: 6.1px;
+            text-transform: uppercase;
+            color: var(--resume-black);
+        }
+
+        .headline {
+            margin-top: 7px;
+
+            font-size: 14px;
+            line-height: 1.0;
+            font-weight: 700;
+
+            letter-spacing: 2.0px;
+            text-transform: uppercase;
+
+            color: var(--resume-blue);
+        }
+
+        .contact-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 5px 19px;
+
+            margin-top: 10px;
+
+            font-family:
+                "Open Sans",
+                "Clear Sans",
+                Arial,
+                Helvetica,
+                sans-serif;
+
+            font-size: 9.5px;
+            line-height: 1.2;
+            font-weight: 700;
+        }
+
+        .contact-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+        }
+
+        .contact-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+
+            width: 15px;
+            height: 15px;
+
+            border: 1px solid var(--resume-blue);
+            border-radius: 50%;
+
+            color: var(--resume-blue);
+
+            font-size: 8px;
+            line-height: 1;
+            font-weight: 700;
+        }
+
+        .contact-item a {
+            color: inherit;
+            text-decoration: underline;
+        }
+
+        /* =====================================================
+           SECTION TITLES
+           ===================================================== */
+
+        .section {
+            margin-top: 16px;
+        }
+
+        .section-title {
+            margin: 0 0 6px 0;
+            padding: 0 0 4px 0;
+
+            border-bottom: 2px solid var(--resume-border);
+
+            font-size: 12px;
+            line-height: 1.1;
+            font-weight: 700;
+
+            letter-spacing: 2.2px;
+            text-transform: uppercase;
+        }
+
+        /* =====================================================
+           SUMMARY
+           ===================================================== */
+
+        .summary-text {
+            margin: 0;
+
+            font-size: 9.5px;
+            line-height: 1.48;
+
+            text-align: justify;
+        }
+
+        /* =====================================================
+           EXPERIENCE
+           ===================================================== */
+
+        .experience-item {
+            margin: 0 0 10px 0;
+            page-break-inside: avoid;
+        }
+
+        .experience-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .experience-title {
+            margin: 0;
+
+            font-size: 13px;
+            line-height: 1.16;
+            font-weight: 700;
+        }
+
+        .experience-dates {
+            margin: 1px 0 1px 0;
+
+            font-size: 9.5px;
+            line-height: 1.2;
+            font-weight: 700;
+        }
+
+        .experience-company {
+            margin: 0 0 4px 0;
+
+            font-size: 10.5px;
+            line-height: 1.2;
+            font-weight: 700;
+
+            color: var(--resume-blue);
+        }
+
+        .experience-bullets {
+            margin: 0;
+            padding-left: 17px;
+
+            font-size: 9.4px;
+            line-height: 1.36;
+        }
+
+        .experience-bullets li {
+            margin: 0 0 3.5px 0;
+            padding-left: 1px;
+        }
+
+        .experience-bullets li:last-child {
+            margin-bottom: 0;
+        }
+
+        /* =====================================================
+           SELECTED WORK
+           ===================================================== */
+
+        .work-item {
+            margin: 0 0 3px 0;
+            padding-left: 17px;
+
+            position: relative;
+
+            font-size: 9.6px;
+            line-height: 1.35;
+        }
+
+        .work-item::before {
+            content: "•";
+            position: absolute;
+            left: 1px;
+            top: 0;
+            font-weight: 700;
+        }
+
+        /* =====================================================
+           SKILLS
+           ===================================================== */
+
+        .skill-group {
+            margin: 0 0 8px 0;
+
+            font-size: 9.7px;
+            line-height: 1.42;
+        }
+
+        .skill-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .skill-category {
+            margin: 0 0 1px 0;
+
+            font-size: 9.8px;
+            line-height: 1.2;
+            font-weight: 700;
+        }
+
+        .skill-values {
+            margin: 0;
+            white-space: normal;
+            word-break: break-word;
+        }
+
+        /* =====================================================
+           EDUCATION
+           ===================================================== */
+
+        .education-item {
+            margin: 0 0 10px 0;
+            page-break-inside: avoid;
+        }
+
+        .education-degree {
+            margin: 0;
+
+            font-size: 10px;
+            line-height: 1.2;
+            font-weight: 700;
+        }
+
+        .education-institution {
+            margin: 1px 0 0 0;
+
+            font-size: 9.7px;
+            line-height: 1.2;
+            font-weight: 700;
+
+            color: var(--resume-blue);
+        }
+
+        /* =====================================================
+           PAGE 2 TOP SPACING
+           ===================================================== */
+
+        .page-two {
+            padding-top: 17mm;
+        }
+
+        /* =====================================================
+           PRINT
+           ===================================================== */
+
+        @media print {
+            html,
+            body {
+                background: #ffffff;
+            }
+
+            .resume-document {
+                width: auto;
+                margin: 0;
+            }
+
+            .page,
+            .page + .page {
+                margin: 0;
+                page-break-after: always;
+                break-after: page;
+            }
+
+            .page:last-child {
+                page-break-after: auto;
+                break-after: auto;
+            }
+        }
+
+        /* =====================================================
+           SCREEN PREVIEW
+           ===================================================== */
+
+        @media screen and (max-width: 900px) {
+            html,
+            body {
+                background: #f4f4f4;
+            }
+
+            .resume-document {
+                width: 100%;
+            }
+
+            .page {
+                width: 100%;
+                height: auto;
+                min-height: auto;
+                margin: 0 0 15px 0;
+                padding: 24px 22px;
+                overflow: visible;
+            }
+
+            .page + .page {
+                margin-top: 15px;
+            }
+
+            .candidate-name {
+                font-size: 20px;
+                letter-spacing: 4.5px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="resume-document">
+
+    <!-- =====================================================
+         PAGE 1
+         ===================================================== -->
+
+    <section class="page">
+
+        <header class="resume-header">
+
+            <h1 class="candidate-name">
+                {{ resume.candidate_name }}
+            </h1>
+
+            {% if resume.headline %}
+            <div class="headline">
+                {{ resume.headline }}
+            </div>
+            {% endif %}
+
+            <div class="contact-row">
+
+                {% if resume.contact.phone %}
+                <span class="contact-item">
+                    <span class="contact-icon">☎</span>
+                    {{ resume.contact.phone }}
+                </span>
+                {% endif %}
+
+                {% if resume.contact.email %}
+                <span class="contact-item">
+                    <span class="contact-icon">@</span>
+                    {{ resume.contact.email }}
+                </span>
+                {% endif %}
+
+                {% if resume.contact.location %}
+                <span class="contact-item">
+                    <span class="contact-icon">⌖</span>
+                    {{ resume.contact.location }}
+                </span>
+                {% endif %}
+
+                {% if resume.contact.linkedin %}
+                <span class="contact-item">
+                    <span class="contact-icon">in</span>
+                    <a href="{{ resume.contact.linkedin }}">
+                        {{ resume.contact.linkedin }}
+                    </a>
+                </span>
+                {% endif %}
+
+            </div>
+
+        </header>
+
+
+        {% if resume.summary %}
+        <section class="section">
+
+            <h2 class="section-title">
+                Summary
+            </h2>
+
+            <p class="summary-text">
+                {{ resume.summary }}
+            </p>
+
+        </section>
+        {% endif %}
+
+
+        {% if resume.experience %}
+        <section class="section">
+
+            <h2 class="section-title">
+                Experience
+            </h2>
+
+            {% for job in resume.experience %}
+
+            <article class="experience-item">
+
+                <h3 class="experience-title">
+                    {{ job.title }}
+                </h3>
+
+                {% if job.start_date or job.end_date %}
+                <div class="experience-dates">
+                    ({{ job.start_date or "" }}{% if job.start_date and job.end_date %} - {% endif %}{{ job.end_date or "" }})
+                </div>
+                {% endif %}
+
+                <div class="experience-company">
+                    {{ job.company }}
+                </div>
+
+                {% if job.bullets %}
+                <ul class="experience-bullets">
+
+                    {% for bullet in job.bullets %}
+                    <li>{{ bullet }}</li>
+                    {% endfor %}
+
+                </ul>
+                {% endif %}
+
+            </article>
+
+            {% endfor %}
+
+        </section>
+        {% endif %}
+
+    </section>
+
+
+    <!-- =====================================================
+         PAGE 2
+         ===================================================== -->
+
+    <section class="page page-two">
+
+        {#
+            The reference resume continues with the remaining
+            experience, selected architecture work, skills,
+            and education.
+
+            With a dynamic resume, the exact page break can be
+            controlled by deciding which experience entries are
+            rendered on page 1 vs page 2 in Python.
+        #}
+
+
+        {% if resume.experience|length > 2 %}
+        <section class="section" style="margin-top: 0;">
+
+            {% for job in resume.experience[2:] %}
+
+            <article class="experience-item">
+
+                <h3 class="experience-title">
+                    {{ job.title }}
+                </h3>
+
+                {% if job.start_date or job.end_date %}
+                <div class="experience-dates">
+                    ({{ job.start_date or "" }}{% if job.start_date and job.end_date %} - {% endif %}{{ job.end_date or "" }})
+                </div>
+                {% endif %}
+
+                <div class="experience-company">
+                    {{ job.company }}
+                </div>
+
+                {% if job.bullets %}
+                <ul class="experience-bullets">
+
+                    {% for bullet in job.bullets %}
+                    <li>{{ bullet }}</li>
+                    {% endfor %}
+
+                </ul>
+                {% endif %}
+
+            </article>
+
+            {% endfor %}
+
+        </section>
+        {% endif %}
+
+
+        {% if resume.projects %}
+        <section class="section">
+
+            <h2 class="section-title">
+                Selected Frontend Architecture Work
+            </h2>
+
+            {% for project in resume.projects %}
+
+                {% if project.name %}
+                <div class="work-item">
+                    <strong>{{ project.name }}</strong>
+                    {% if project.description %}
+                        {{ project.description }}
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                {% for bullet in project.bullets %}
+                <div class="work-item">
+                    {{ bullet }}
+                </div>
+                {% endfor %}
+
+            {% endfor %}
+
+        </section>
+        {% endif %}
+
+
+        {% if resume.skills %}
+        <section class="section">
+
+            <h2 class="section-title">
+                Skills
+            </h2>
+
+            {% for group in resume.skills %}
+
+            <div class="skill-group">
+
+                <div class="skill-category">
+                    {{ group.category }}:
+                </div>
+
+                <div class="skill-values">{{ group.skills|join(", ") }}</div>
+
+            </div>
+
+            {% endfor %}
+
+        </section>
+        {% endif %}
+
+
+        {% if resume.education %}
+        <section class="section">
+
+            <h2 class="section-title">
+                Education
+            </h2>
+
+            {% for education in resume.education %}
+
+            <article class="education-item">
+
+                <div class="education-degree">
+                    {{ education.degree }}{% if education.start_date or education.end_date %} ({{ education.start_date or "" }}{% if education.start_date and education.end_date %}-{% endif %}{{ education.end_date or "" }}){% endif %}
+                </div>
+
+                <div class="education-institution">
+                    {{ education.institution }}
+                </div>
+
+                {% if education.details %}
+                    {% for detail in education.details %}
+                    <div class="education-institution">
+                        {{ detail }}
+                    </div>
+                    {% endfor %}
+                {% endif %}
+
+            </article>
+
+            {% endfor %}
+
+        </section>
+        {% endif %}
+
+    </section>
+
+</div>
+
+</body>
+</html>

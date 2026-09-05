@@ -6,15 +6,22 @@ from langgraph.graph import (
 
 from techiewithbeard_ai.job_match.nodes import (
     analyze_transferability,
+    apply_resume_tailoring,
+    apply_tailoring,
     calculate_score,
     generate_critique,
     match_skills,
     parse_requirements,
     parse_resume,
+    tailor_resume,
 )
+
 from techiewithbeard_ai.job_match.state import JobMatchState
 
-def check_missing_skills(state: JobMatchState) -> str:
+
+def check_missing_skills(
+    state: JobMatchState,
+) -> str:
 
     missing_skills = state.get("missing_skills") or []
 
@@ -23,9 +30,14 @@ def check_missing_skills(state: JobMatchState) -> str:
 
     return "scoring"
 
+
 def build_job_match_graph():
 
     graph = StateGraph(JobMatchState)
+
+    # ---------------------------------------------------------
+    # Nodes
+    # ---------------------------------------------------------
 
     graph.add_node(
         "parse_resume",
@@ -36,11 +48,12 @@ def build_job_match_graph():
         "parse_requirements",
         parse_requirements,
     )
-    
+
     graph.add_node(
         "match_skills",
         match_skills,
     )
+
     graph.add_node(
         "transferability",
         analyze_transferability,
@@ -56,26 +69,53 @@ def build_job_match_graph():
         generate_critique,
     )
 
+    # graph.add_node(
+    #     "generate_resume_html",
+    #     generate_resume_html,
+    # )
+    
+    graph.add_node(
+    "tailor_resume",
+    tailor_resume,
+    )
+
+    graph.add_node(
+        "apply_tailoring",
+        apply_tailoring,
+    )
+
+    # ---------------------------------------------------------
+    # Start
+    # ---------------------------------------------------------
+
     graph.add_edge(
         START,
         "parse_resume",
     )
 
     graph.add_edge(
-         START,
+        START,
         "parse_requirements",
     )
-    
+
+    # ---------------------------------------------------------
+    # Resume + Job Requirements
+    # ---------------------------------------------------------
+
     graph.add_edge(
-            "parse_resume",
-            "match_skills",
-        )
-        
+        "parse_resume",
+        "match_skills",
+    )
+
     graph.add_edge(
         "parse_requirements",
         "match_skills",
     )
-    
+
+    # ---------------------------------------------------------
+    # Skill Matching
+    # ---------------------------------------------------------
+
     graph.add_conditional_edges(
         "match_skills",
         check_missing_skills,
@@ -85,22 +125,55 @@ def build_job_match_graph():
         },
     )
 
+    # ---------------------------------------------------------
+    # Transferability
+    # ---------------------------------------------------------
+
     graph.add_edge(
         "transferability",
         "scoring",
     )
 
+    # ---------------------------------------------------------
+    # Scoring
+    # ---------------------------------------------------------
+
     graph.add_edge(
         "scoring",
         "critique",
     )
 
+    # ---------------------------------------------------------
+    # AI Critique
+    # ---------------------------------------------------------
+
+    # graph.add_edge(
+    #     "critique",
+    #     "generate_resume_html",
+    # )
+    
     graph.add_edge(
         "critique",
+        "tailor_resume",
+    )
+
+    graph.add_edge(
+        "tailor_resume",
+        "apply_tailoring",
+    )
+
+    graph.add_edge(
+        "apply_tailoring",
         END,
     )
     
+    # ---------------------------------------------------------
+    # Resume HTML
+    # ---------------------------------------------------------
+
+    # graph.add_edge(
+    #     "generate_resume_html",
+    #     END,
+    # )
+
     return graph.compile()
-
-
-

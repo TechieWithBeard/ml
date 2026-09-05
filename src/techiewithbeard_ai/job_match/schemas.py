@@ -1,24 +1,5 @@
 from pydantic import BaseModel, Field
 
-class Experience(BaseModel):
-    title: str | None = Field(
-        default=None,
-        description="Job title or position held."
-    )
-    company: str | None = Field(
-        default=None,
-        description="Company or organization name."
-    )
-    duration: str | None = Field(
-        default=None,
-        description="Duration of employment (e.g., 'Jan 2020 - Dec 2021')."
-    )
-        
-    responsibilities: list[str] = Field(
-        default_factory=list,
-        description="Summry of responsibilities and tasks performed in the role."
-    )
-
 
 class ResumeProfile(BaseModel):
     candidate_name: str | None = Field(
@@ -31,7 +12,7 @@ class ResumeProfile(BaseModel):
         description="Technical skills explicitly mentioned in the resume."
     )
 
-    experience: list[Experience] = Field(
+    experience: list["Experience"] = Field(
         default_factory=list,
         description="Brief summaries of each relevant work experience. Keep each item concise."
     )
@@ -143,4 +124,107 @@ class Critique(BaseModel):
 
     overall_assessment: str = Field(
         description="Short overall assessment of candidate suitability."
+    )
+    
+    
+    
+    
+
+class ContactInfo(BaseModel):
+    email: str | None = None
+    phone: str | None = None
+    location: str | None = None
+    linkedin: str | None = None
+    github: str | None = None
+    portfolio: str | None = None
+
+
+class SkillGroup(BaseModel):
+    category: str
+    skills: list[str] = Field(default_factory=list)
+
+
+class Experience(BaseModel):
+    company: str
+    title: str
+    start_date: str | None = None
+    end_date: str | None = None
+    location: str | None = None
+    bullets: list[str] = Field(default_factory=list)
+
+
+class Education(BaseModel):
+    degree: str
+    institution: str
+    start_date: str | None = None
+    end_date: str | None = None
+    location: str | None = None
+    details: list[str] = Field(default_factory=list)
+
+
+class Project(BaseModel):
+    name: str
+    description: str | None = None
+    technologies: list[str] = Field(default_factory=list)
+    bullets: list[str] = Field(default_factory=list)
+    url: str | None = None
+
+
+class ResumeDocument(BaseModel):
+
+    candidate_name: str
+
+    headline: str | None = None
+
+    contact: ContactInfo = Field(
+        default_factory=ContactInfo
+    )
+
+    summary: str | None = None
+
+    skills: list[SkillGroup] = Field(
+        default_factory=list
+    )
+
+    experience: list[Experience] = Field(
+        default_factory=list
+    )
+
+    education: list[Education] = Field(
+        default_factory=list
+    )
+
+    certifications: list[str] = Field(
+        default_factory=list
+    )
+
+    projects: list[Project] = Field(
+        default_factory=list
+    )
+    
+class BulletChange(BaseModel):
+    original: str
+    revised: str
+    reason: str
+
+
+class ExperienceTailoring(BaseModel):
+    company: str
+
+    bullet_changes: list[BulletChange] = Field(
+        default_factory=list
+    )
+
+
+class ResumeTailoring(BaseModel):
+    headline: str | None = None
+
+    summary: str | None = None
+
+    experience: list[ExperienceTailoring] = Field(
+        default_factory=list
+    )
+
+    skill_groups_order: list[str] = Field(
+        default_factory=list
     )

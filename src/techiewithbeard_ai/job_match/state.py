@@ -1,11 +1,15 @@
 from typing import TypedDict
-from techiewithbeard_ai.job_match.schemas import Experience, SkillMatch, Transferability, Critique
+from techiewithbeard_ai.job_match.schemas import Experience, ResumeDocument, ResumeTailoring, SkillMatch, Transferability, Critique
 from techiewithbeard_ai.schema.provider import ModelConfig
 
 class JobMatchState(TypedDict, total=False):
 
     # Input
     resume_text: str
+    resume_document: ResumeDocument | None
+    resume_tailoring: ResumeTailoring | None
+    tailored_resume: ResumeDocument | None
+    resume_html: str
     job_description: str
     config: ModelConfig
 
