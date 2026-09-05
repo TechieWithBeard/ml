@@ -29,21 +29,65 @@ MAX_FREE_PROMPTS = 3
 SESSION_STORE: Dict[str, Dict[str, Any]] = {}
 
 
+def get_supabase_headers():
+    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_ANON_KEY")
+    if not supabase_key:
+        return None
+    return {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {supabase_key}",
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates",
+    }
+
+
 def check_and_update_session_quota(session_id: str, has_custom_auth: bool) -> tuple[bool, int]:
     """
     Returns (is_allowed, quota_remaining).
     If user provided custom credentials (OpenAI key or Hugging Face token), unlimited queries are granted (-1).
+    Persists to Supabase table 'agent_rate_limits' when SUPABASE_URL is configured.
     """
     if has_custom_auth:
         return True, -1
 
     now = time.time()
-    # Expire entries older than 24 hours to prevent memory creep
+    sid = session_id or "anonymous"
+
+    # 1. Try Supabase PostgREST persistence
+    supabase_url = os.environ.get("SUPABASE_URL")
+    sb_headers = get_supabase_headers()
+
+    if supabase_url and sb_headers:
+        try:
+            endpoint = f"{supabase_url.rstrip('/')}/rest/v1/agent_rate_limits?id=eq.{sid}&select=prompts_used"
+            resp = requests.get(endpoint, headers=sb_headers, timeout=3)
+            if resp.status_code == 200:
+                rows = resp.json()
+                prompts_used = rows[0].get("prompts_used", 0) if rows else 0
+                if prompts_used >= MAX_FREE_PROMPTS:
+                    return False, 0
+
+                new_count = prompts_used + 1
+                upsert_url = f"{supabase_url.rstrip('/')}/rest/v1/agent_rate_limits"
+                requests.post(
+                    upsert_url,
+                    headers=sb_headers,
+                    json={
+                        "id": sid,
+                        "prompts_used": new_count,
+                        "last_prompt_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    },
+                    timeout=3,
+                )
+                return True, MAX_FREE_PROMPTS - new_count
+        except Exception as e:
+            print(f"Notice: Supabase quota sync ({e}). Falling back to local memory store.")
+
+    # 2. Local in-memory fallback
     for s in list(SESSION_STORE.keys()):
         if now - SESSION_STORE[s].get("timestamp", 0) > 86400:
             SESSION_STORE.pop(s, None)
 
-    sid = session_id or "anonymous"
     entry = SESSION_STORE.setdefault(sid, {"prompts": 0, "timestamp": now})
     entry["timestamp"] = now
 
@@ -95,6 +139,7 @@ async def query_langgraph_agent(
     payload: QueryRequest,
     x_openai_key: Optional[str] = Header(None, alias="x-openai-key"),
     x_hf_token: Optional[str] = Header(None, alias="x-hf-token"),
+    x_visitor_id: Optional[str] = Header(None, alias="x-visitor-id"),
     x_session_id: Optional[str] = Header(None, alias="x-session-id"),
     authorization: Optional[str] = Header(None),
 ):
@@ -111,19 +156,19 @@ async def query_langgraph_agent(
     custom_hf_token = x_hf_token
 
     has_custom_auth = bool(custom_openai_key or custom_hf_token)
-    session_id = x_session_id or "anonymous"
+    session_id = x_visitor_id or x_session_id or "anonymous"
 
     # Check freemium session quota (3 prompts free on shared demo key)
     is_allowed, quota_remaining = check_and_update_session_quota(session_id, has_custom_auth)
     if not is_allowed:
         return QueryResponse(
             answer=(
-                "⚡ **Demo Quota Reached (3/3 Free Prompts Used)**\n\n"
-                "You have used your 3 free prompts on the shared demo server! "
-                "To continue querying Vishnu's AI agent without limits:\n\n"
+                "✨ **You've completed your 3 free exploratory questions!**\n\n"
+                "Thank you for exploring Vishnu's portfolio agent! To ensure this demo remains fast and accessible for everyone, free exploratory queries are capped at 3 per visitor.\n\n"
+                "To continue chatting and exploring without any limits:\n\n"
                 "1. Click **Settings (⚙️)** in the top bar.\n"
-                "2. Provide your personal **OpenAI API Key** (`sk-...`) or **Hugging Face Token** (`hf_...`).\n"
-                "3. Your credentials remain private in your browser session and unlock **unlimited prompts**."
+                "2. Add your personal **OpenAI API Key** (`sk-...`) or free **Hugging Face Token** (`hf_...`).\n"
+                "3. Your credentials stay strictly in your browser session memory and unlock **unlimited questions**."
             ),
             references=[f"{target_url.rstrip('/')}/experience", f"{target_url.rstrip('/')}/demos"],
             quota_remaining=0,
