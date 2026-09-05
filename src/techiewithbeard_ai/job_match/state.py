@@ -1,5 +1,6 @@
 from typing import TypedDict
 from techiewithbeard_ai.job_match.schemas import Experience, ResumeDocument, ResumeTailoring, SkillMatch, Transferability, Critique
+from techiewithbeard_ai.job_match.personality import ResumePersonality
 from techiewithbeard_ai.schema.provider import ModelConfig
 
 class JobMatchState(TypedDict, total=False):
@@ -11,7 +12,12 @@ class JobMatchState(TypedDict, total=False):
     tailored_resume: ResumeDocument | None
     resume_html: str
     job_description: str
+    linkedin_url: str | None
+    linkedin_source: str | None
     config: ModelConfig
+    
+    # Resume personality and tailoring
+    resume_personality: ResumePersonality
 
     # Resume
     candidate_name: str | None

@@ -1,14 +1,40 @@
 from typing import cast
+
+from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langsmith import traceable
 
 from techiewithbeard_ai.agents.agents import get_chat_model
-from techiewithbeard_ai.job_match.schemas import JobRequirements, ResumeDocument, ResumeTailoring, SkillMatchResult, TransferabilityAnalysis, Transferability, SkillMatch, Critique
+from techiewithbeard_ai.job_match.experience_agents import (
+    skill_to_experience_orchestrator,
+    tailor_experience_section,
+)
+from techiewithbeard_ai.job_match.personality import ResumePersonality
+from techiewithbeard_ai.job_match.personality_critique import generate_personality_critique
+from techiewithbeard_ai.job_match.schemas import (
+    Critique,
+    JobRequirements,
+    ResumeDocument,
+    ResumeTailoring,
+    SkillMatch,
+    SkillMatchResult,
+    TransferabilityAnalysis,
+)
 from techiewithbeard_ai.job_match.state import JobMatchState
-from techiewithbeard_ai.schema.provider import ModelConfig
-from langchain_core.output_parsers import PydanticOutputParser
 
 SKILL_MATCH_BATCH_SIZE = 5
+
+
+def _get_resume_personality(state: JobMatchState) -> ResumePersonality:
+    personality = state.get("resume_personality") or ResumePersonality.AMERICAN
+
+    if isinstance(personality, ResumePersonality):
+        return personality
+
+    try:
+        return ResumePersonality(str(personality))
+    except ValueError:
+        return ResumePersonality.AMERICAN
 
 @traceable
 def parse_requirements(
@@ -259,31 +285,54 @@ def parse_resume(
             (
                 "system",
                 """
-You are a resume extraction system.
+You are a professional resume extraction system.
 
-Convert the provided resume text into the
-ResumeDocument schema.
+Convert the provided resume text into the ResumeDocument schema.
 
-IMPORTANT:
+CRITICAL INSTRUCTIONS:
 
-The resume is the ONLY source of truth.
+1. EXTRACT ALL ITEMS (not just the first one):
+   - Extract EVERY work experience/job entry listed
+   - Extract EVERY education entry (degree, school, dates)
+   - Extract EVERY skill category and ALL skills within each category
+   - Extract ALL achievement bullets for each job
+   - Do NOT stop after one item - continue until all are extracted
 
-Extract information exactly from the resume.
+2. For EXPERIENCE - extract from EVERY job listed:
+   - company: Name of the employer/company
+   - title: Job title/position
+   - start_date: Start date (keep original format from resume)
+   - end_date: End date or "Present" if current
+   - location: Location/city if mentioned
+   - bullets: EVERY achievement/responsibility bullet point for this job
 
-Do NOT:
-- invent information
-- infer missing skills
-- invent dates
-- invent achievements
-- invent companies
-- invent contact information
-- add technologies not present
+3. For EDUCATION - extract from EVERY degree listed:
+   - degree: Degree name (e.g., "Bachelor of Science in Computer Science")
+   - institution: School/University name
+   - start_date: Start date if mentioned
+   - end_date: Graduation date if mentioned
+   - location: Location if mentioned
+   - details: Any other relevant details (GPA, honors, etc.)
 
-Preserve the original meaning and wording.
+4. For SKILLS - extract with categories:
+   - Group skills by their natural categories (Frontend, Backend, Tools, etc.)
+   - Include ALL skills mentioned in the resume
+   - Keep the exact skill names from the resume
 
-If information does not exist:
-- use null for optional scalar fields
-- use [] for lists
+5. Data Integrity:
+   - The resume is the ONLY source of truth
+   - Do NOT invent, infer, or add information
+   - Do NOT add skills not in the resume
+   - Do NOT truncate or abbreviate bullets
+   - Do NOT remove any achievements or responsibilities
+   - Preserve complete bullet point text
+
+6. Output Format:
+   - use null for missing optional scalar fields
+   - use [] for empty lists (only if truly empty)
+   - If no education exists, education=[]
+   - If no certifications, certifications=[]
+   - If no projects, projects=[]
 
 {format_instructions}
 """
@@ -294,6 +343,19 @@ If information does not exist:
 RESUME:
 
 {resume_text}
+
+EXTRACTION CHECKLIST:
+- [ ] Extracted candidate_name
+- [ ] Extracted headline (if present)
+- [ ] Extracted contact info (email, phone, linkedin, etc.)
+- [ ] Extracted summary (if present)
+- [ ] Extracted ALL skill groups with ALL skills in each group
+- [ ] Extracted EVERY work experience entry with complete bullets
+- [ ] Extracted EVERY education entry
+- [ ] Extracted certifications (if any)
+- [ ] Extracted projects (if any)
+
+Remember: Go through the resume systematically and extract EVERYTHING that matches the schema. Do not stop after finding one item of each type.
 """
             ),
         ]
@@ -305,14 +367,60 @@ RESUME:
 
     chain = prompt | llm | parser
 
-    result = chain.invoke(
-        {
-            "resume_text": resume_text,
-        }
-    )
+    try:
+        result = chain.invoke(
+            {
+                "resume_text": resume_text,
+            }
+        )
+    except Exception as e:
+        print(f"\n❌ RESUME PARSING ERROR: {str(e)}")
+        print(f"Error type: {type(e).__name__}")
+        raise ValueError(
+            f"Failed to parse resume: {str(e)}"
+        ) from e
 
+    # Validation and debugging
+    if not result:
+        raise ValueError("LLM returned empty result for resume")
+    
     print("\n========== RESUME DOCUMENT ==========")
-    print(result)
+    print(f"✓ Candidate: {result.candidate_name}")
+    print(f"✓ Experience entries: {len(result.experience)}")
+    if result.experience:
+        for i, exp in enumerate(result.experience, 1):
+            print(f"  {i}. {exp.title} @ {exp.company}")
+            if exp.bullets:
+                print(f"     ✓ Bullets: {len(exp.bullets)}")
+                for j, bullet in enumerate(exp.bullets[:2], 1):
+                    preview = bullet[:60] + "..." if len(bullet) > 60 else bullet
+                    print(f"       - {preview}")
+            else:
+                print(f"     ⚠ No bullets extracted")
+    else:
+        print("  ⚠ No experience extracted!")
+    
+    print(f"✓ Education entries: {len(result.education)}")
+    if result.education:
+        for i, edu in enumerate(result.education, 1):
+            print(f"  {i}. {edu.degree} @ {edu.institution}")
+    else:
+        print("  ⚠ No education extracted!")
+    
+    print(f"✓ Skill groups: {len(result.skills)}")
+    if result.skills:
+        total_skills = sum(len(group.skills) for group in result.skills)
+        print(f"  Total skills: {total_skills}")
+        for group in result.skills:
+            print(f"  - {group.category}: {len(group.skills)} skills")
+            if group.skills:
+                preview = ", ".join(group.skills[:3])
+                if len(group.skills) > 3:
+                    preview += f", +{len(group.skills) - 3} more"
+                print(f"    {preview}")
+    else:
+        print("  ⚠ No skills extracted!")
+    
     print("=====================================\n")
 
     return {
@@ -921,6 +1029,54 @@ Do not add any text before or after the JSON.
     return {
         "critique": result,
     }
+
+
+@traceable
+def generate_personality_critique_node(state: JobMatchState) -> dict:
+    config = state.get("config")
+
+    if config is None:
+        raise ValueError(
+            "Model configuration is missing from graph state."
+        )
+
+    candidate_name = state.get("candidate_name") or "Candidate"
+    candidate_skills = state.get("candidate_skills") or []
+    candidate_experience = state.get("candidate_experience") or []
+    required_skills = state.get("required_skills") or []
+    matching_skills = state.get("matching_skills") or []
+    missing_skills = state.get("missing_skills") or []
+    personality = _get_resume_personality(state)
+
+    experience_summaries = "\n".join(
+        (
+            f"- {experience.title} at {experience.company}: "
+            f"{'; '.join(experience.bullets[:3])}"
+        )
+        for experience in candidate_experience
+    )
+
+    if not experience_summaries:
+        experience_summaries = "No experience summaries extracted."
+
+    result = generate_personality_critique(
+        candidate_name=candidate_name,
+        candidate_skills=candidate_skills,
+        experience_summaries=experience_summaries,
+        required_skills=required_skills,
+        matching_skills=matching_skills,
+        missing_skills=missing_skills,
+        personality=personality,
+        config=config,
+    )
+
+    print("\n========== PERSONALITY CRITIQUE OUTPUT ==========")
+    print(result)
+    print("=================================================\n")
+
+    return {
+        "critique": result,
+    }
     
     
 
@@ -1403,6 +1559,61 @@ def validate_resume_document(
                 f"⚠️ Experience #{index} has no bullets: "
                 f"{job.company}"
             )       
+
+
+@traceable
+def tailor_resume_with_experience_agents(
+    state: JobMatchState,
+) -> dict:
+    resume_document = state.get("resume_document")
+    required_skills = state.get("required_skills") or []
+    candidate_skills = state.get("candidate_skills") or []
+    config = state.get("config")
+    personality = _get_resume_personality(state)
+
+    if resume_document is None:
+        raise ValueError(
+            "ResumeDocument is missing from graph state."
+        )
+
+    if config is None:
+        raise ValueError(
+            "Model configuration is missing from graph state."
+        )
+
+    tailored_resume = resume_document.model_copy(deep=True)
+
+    routing = skill_to_experience_orchestrator(
+        candidate_skills=candidate_skills,
+        required_skills=required_skills,
+        experiences=tailored_resume.experience,
+        personality=personality,
+        config=config,
+    )
+
+    for index, experience in enumerate(tailored_resume.experience):
+        relevant_skills = routing.get(index, [])
+
+        tailored_resume.experience[index] = tailor_experience_section(
+            experience=experience,
+            required_skills=required_skills,
+            relevant_skills_for_this_exp=relevant_skills,
+            personality=personality,
+            config=config,
+        )
+
+    validate_resume_preservation(
+        resume_document,
+        tailored_resume,
+    )
+
+    print("\n========== MULTI-AGENT TAILORED RESUME ==========")
+    print(tailored_resume)
+    print("=================================================\n")
+
+    return {
+        "tailored_resume": tailored_resume,
+    }
         
 
 @traceable

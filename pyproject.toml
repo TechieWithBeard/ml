@@ -22,8 +22,12 @@ dependencies = [
   "typer>=0.12.5",
   "langchain-postgres>=0.0.17",
   "langchain-chroma>=0.2.2",
+  "jinja2>=3.1.0",
   "uuid>=1.30",
   "streamlit-mermaid",
+  "requests>=2.31.0",
+  "beautifulsoup4>=4.12.0",
+  "weasyprint>=62.0",
    # ZeroGPU
   "spaces",
 ]

@@ -4,18 +4,16 @@ from langgraph.graph import (
     StateGraph,
 )
 
+from techiewithbeard_ai.job_match.linkedin_node import extract_linkedin_job_node
 from techiewithbeard_ai.job_match.nodes import (
     analyze_transferability,
-    apply_resume_tailoring,
-    apply_tailoring,
     calculate_score,
-    generate_critique,
+    generate_personality_critique_node,
     match_skills,
     parse_requirements,
     parse_resume,
-    tailor_resume,
+    tailor_resume_with_experience_agents,
 )
-
 from techiewithbeard_ai.job_match.state import JobMatchState
 
 
@@ -31,6 +29,20 @@ def check_missing_skills(
     return "scoring"
 
 
+def route_job_source(
+    state: JobMatchState,
+) -> str:
+    """
+    Route between LinkedIn extraction and manual job description.
+    """
+    linkedin_url = state.get("linkedin_url")
+    
+    if linkedin_url and isinstance(linkedin_url, str) and linkedin_url.strip():
+        return "extract_linkedin_job"
+    
+    return "parse_requirements"
+
+
 def build_job_match_graph():
 
     graph = StateGraph(JobMatchState)
@@ -38,6 +50,11 @@ def build_job_match_graph():
     # ---------------------------------------------------------
     # Nodes
     # ---------------------------------------------------------
+
+    graph.add_node(
+        "extract_linkedin_job",
+        extract_linkedin_job_node,
+    )
 
     graph.add_node(
         "parse_resume",
@@ -66,7 +83,7 @@ def build_job_match_graph():
 
     graph.add_node(
         "critique",
-        generate_critique,
+        generate_personality_critique_node,
     )
 
     # graph.add_node(
@@ -75,13 +92,8 @@ def build_job_match_graph():
     # )
     
     graph.add_node(
-    "tailor_resume",
-    tailor_resume,
-    )
-
-    graph.add_node(
-        "apply_tailoring",
-        apply_tailoring,
+        "tailor_resume",
+        tailor_resume_with_experience_agents,
     )
 
     # ---------------------------------------------------------
@@ -93,8 +105,19 @@ def build_job_match_graph():
         "parse_resume",
     )
 
-    graph.add_edge(
+    # Route between LinkedIn extraction and manual job description
+    graph.add_conditional_edges(
         START,
+        route_job_source,
+        {
+            "extract_linkedin_job": "extract_linkedin_job",
+            "parse_requirements": "parse_requirements",
+        },
+    )
+
+    # LinkedIn extraction feeds into parse_requirements
+    graph.add_edge(
+        "extract_linkedin_job",
         "parse_requirements",
     )
 
@@ -159,11 +182,6 @@ def build_job_match_graph():
 
     graph.add_edge(
         "tailor_resume",
-        "apply_tailoring",
-    )
-
-    graph.add_edge(
-        "apply_tailoring",
         END,
     )
     
