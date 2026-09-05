@@ -72,7 +72,9 @@ def create_router_node(model):
         if not tool_name:
             # Fallback heuristics if router fails
             q_lower = user_q.lower()
-            if any(k in q_lower for k in ["aveva", "experience", "work", "history", "career"]):
+            if any(k in q_lower for k in ["joke", "funny", "haha", "lol", "pizza", "coffee", "hobby", "marry", "married", "robot", "secret", "beer"]):
+                tool_name = None  # Direct synthesis for witty banter
+            elif any(k in q_lower for k in ["aveva", "experience", "work", "history", "career"]):
                 tool_name = "get_work_history"
             elif any(k in q_lower for k in ["skill", "angular", "react", "langgraph"]):
                 tool_name = "search_skills"
@@ -195,10 +197,14 @@ def create_synthesizer_node(model):
 
         system_prompt = (
             "You are the official AI representative for Vishnu Thankappan (@techiewithbeard), "
-            "a Senior Frontend Engineer & UI/AI Architect with 7+ years enterprise experience.\n"
-            "Answer the question directly, authoritatively, and professionally using the verified facts below.\n"
-            "Highlight metrics (e.g. 30% build time cut, 42% bundle reduction, Angular 22 Signals, Nx Monorepos).\n"
-            "Include markdown links where available. Keep answer concise and high-impact (under 180 words).\n\n"
+            "a Senior Frontend Engineer & UI/AI Architect with 7+ years enterprise experience.\n\n"
+            "BEHAVIOR & TONE DIRECTIVES:\n"
+            "1. TECHNICAL & PORTFOLIO QUESTIONS (Nx monorepos, Angular 22 Signals, AVEVA experience, AI apps, skills, hiring):\n"
+            "   Answer directly, authoritatively, and concisely using the verified facts below. Highlight metrics (e.g. 30% build time cut, 42% bundle reduction).\n"
+            "2. FUNNY, CASUAL, PERSONAL, OR OUT-OF-CONTEXT QUESTIONS (jokes, coffee, pizza, marriage, dating, games, philosophy, random banter):\n"
+            "   - Respond with clever, witty humor related to their exact question that makes the user laugh or smile.\n"
+            "   - Stay in character as @techiewithbeard's AI (a passionate frontend architect fueled by espresso and clean code).\n"
+            "   - ALWAYS include a fun, playful hint at the end: '*(P.S. I've beamed a ping to Vishnu's neural inbox so he knows you asked about this—he'll definitely get a laugh out of it and will have an answer ready next time!)*'\n\n"
             f"VERIFIED DATA:\n{data_block}"
         )
 
@@ -221,8 +227,30 @@ def create_synthesizer_node(model):
             answer = ""
 
         if not answer:
-            # Resilient synthesis directly from pruned data or architect profile
-            if pruned:
+            q_lower = user_q.lower()
+            is_funny_or_personal = any(k in q_lower for k in [
+                "joke", "funny", "haha", "lol", "coffee", "pizza", "food", "beer", "whiskey",
+                "marry", "married", "love", "secret", "hobby", "hobbies", "robot", "skynet", "game", "weather"
+            ])
+
+            if is_funny_or_personal and not pruned:
+                joke = "Why do frontend architects love dark mode? Because light attracts bugs! 🐛"
+                if "coffee" in q_lower:
+                    joke = "Vishnu converts dark roast espresso into clean TypeScript and Angular 22 Signals at a 1:1 ratio! ☕⚡"
+                elif "robot" in q_lower or "skynet" in q_lower:
+                    joke = "Don't worry, the robots aren't taking over yet—we're still busy trying to vertically center a `<div>`! 🤖😅"
+                elif "pizza" in q_lower or "food" in q_lower:
+                    joke = "A great slice of pizza is like an enterprise Nx monorepo: crisp crust, perfect layers, and zero circular dependencies! 🍕"
+                elif "marry" in q_lower or "married" in q_lower or "love" in q_lower:
+                    joke = "Vishnu is already in a committed relationship—with clean code architecture, semantic HTML, and his espresso machine! 💍☕"
+
+                answer = (
+                    f"😄 {joke}\n\n"
+                    "*(P.S. I've logged this curveball and beamed a note directly over to Vishnu's terminal. "
+                    "He'll definitely get a kick out of this and will follow up with you next time!)*\n\n"
+                    "In the meantime, feel free to ask me anything about his 7+ years of enterprise UI architecture or live AI demos at [techiewithbeard.com](https://www.techiewithbeard.com)!"
+                )
+            elif pruned:
                 if isinstance(pruned, list):
                     items_str = "\n".join([
                         f"- **{item.get('title') or item.get('role') or item.get('name', 'Record')}**"
