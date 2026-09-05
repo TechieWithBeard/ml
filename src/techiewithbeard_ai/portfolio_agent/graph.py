@@ -44,12 +44,17 @@ def create_router_node(model):
             HumanMessage(content=user_q),
         ]
 
-        response = model.invoke(messages)
-        content = response.content if hasattr(response, "content") else str(response)
-
-        # Approximate token usage
+        content = ""
         prompt_tokens = len(system_prompt.split()) + len(user_q.split())
-        completion_tokens = len(content.split())
+        completion_tokens = 0
+
+        try:
+            if model is not None:
+                response = model.invoke(messages)
+                content = response.content if hasattr(response, "content") else str(response)
+                completion_tokens = len(content.split())
+        except Exception:
+            content = ""
 
         tool_name = None
         tool_args: Dict[str, Any] = {}
@@ -62,6 +67,9 @@ def create_router_node(model):
                 tool_name = parsed.get("tool")
                 tool_args = parsed.get("args", {})
         except Exception:
+            pass
+
+        if not tool_name:
             # Fallback heuristics if router fails
             q_lower = user_q.lower()
             if any(k in q_lower for k in ["aveva", "experience", "work", "history", "career"]):
@@ -199,11 +207,39 @@ def create_synthesizer_node(model):
             HumanMessage(content=user_q),
         ]
 
-        response = model.invoke(messages)
-        answer = response.content if hasattr(response, "content") else str(response)
-
+        answer = ""
         prompt_tokens = len(system_prompt.split()) + len(user_q.split())
-        completion_tokens = len(answer.split())
+        completion_tokens = 0
+
+        try:
+            if model is not None:
+                response = model.invoke(messages)
+                answer = response.content if hasattr(response, "content") else str(response)
+                completion_tokens = len(answer.split())
+        except Exception as err:
+            trace.append(f"Model synthesis note ({err}). Using structured synthesis.")
+            answer = ""
+
+        if not answer:
+            # Resilient synthesis directly from pruned data or architect profile
+            if pruned:
+                if isinstance(pruned, list):
+                    items_str = "\n".join([
+                        f"- **{item.get('title') or item.get('role') or item.get('name', 'Record')}**"
+                        f"{' (' + item.get('company') + ')' if item.get('company') else ''}: "
+                        f"{item.get('description') or item.get('summary', '')}"
+                        for item in pruned[:4]
+                    ])
+                    answer = f"Here is the verified information from Vishnu's portfolio records:\n\n{items_str}\n\nExplore interactive demos and architecture at [techiewithbeard.com](https://www.techiewithbeard.com)."
+                elif isinstance(pruned, dict):
+                    desc = pruned.get('description') or pruned.get('bio') or pruned.get('summary') or "Senior Frontend Engineer & UI/AI Architect."
+                    answer = f"**Vishnu Thankappan (@techiewithbeard)**\n\n{desc}\n\n- **Specialization**: Enterprise Nx Monorepos, Angular 22 Zoneless, React 19 Microfrontends, LangGraph & WebMCP.\n- **Portfolio**: [techiewithbeard.com](https://www.techiewithbeard.com)"
+            else:
+                answer = (
+                    "Vishnu Thankappan (@techiewithbeard) is a Senior Frontend Engineer & UI/AI Architect with 7+ years of enterprise experience "
+                    "specializing in Enterprise Nx Monorepos, Angular 22 Signals/Zoneless, React 19 microfrontends, and LangGraph AI interfaces. "
+                    "Visit [techiewithbeard.com](https://www.techiewithbeard.com) for live architecture demos."
+                )
 
         trace.append(f"Synthesizer completed answer ({len(answer)} chars).")
 
@@ -221,7 +257,11 @@ def build_portfolio_agent_graph(config: ModelConfig, target_url: str):
     """
     Constructs the token-efficient LangGraph State Machine.
     """
-    model = get_chat_model(config)
+    try:
+        model = get_chat_model(config)
+    except Exception as err:
+        print(f"Notice: Model initialization deferred or failed: {err}. Graph will use heuristic routing & verified fact synthesis.")
+        model = None
 
     graph = StateGraph(PortfolioAgentState)
 

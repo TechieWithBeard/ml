@@ -41,22 +41,23 @@ def get_chat_model(config: ModelConfig):
     
     if provider == "ollama":
         return ChatOllama(
-            model=config.chat_model,
-            base_url=config.ollama_url,
+            model=config.chat_model or "llama3.2",
+            base_url=config.ollama_url or "http://localhost:11434",
             temperature=config.temperature,
             num_predict=max_tokens,
             num_ctx=16384,
-            keep_alive="30m"
+            keep_alive="30m",
         )
     
-    if provider == "hugging face":
-        if not config.hf_token:
+    if provider in ["hugging face", "huggingface"]:
+        token = config.hf_token.get_secret_value() if config.hf_token else os.environ.get("HUGGINGFACEHUB_API_TOKEN")
+        if not token:
             raise ValueError(
-                "Hugging Face token is required."
+                "Hugging Face user access token is required. Please provide it in Settings (⚙️)."
             )
         llm = HuggingFaceEndpoint(
-            model=config.chat_model,
-            huggingfacehub_api_token=config.hf_token.get_secret_value(),
+            repo_id=config.chat_model or "Qwen/Qwen2.5-7B-Instruct",
+            huggingfacehub_api_token=token,
             temperature=config.temperature,
             max_new_tokens=max_tokens,
             do_sample=False,

@@ -9,7 +9,12 @@ from techiewithbeard_ai.portfolio_agent.discovery import discover_mcp_tools
 from techiewithbeard_ai.portfolio_agent.graph import build_portfolio_agent_graph
 
 IS_DEPLOYED = bool(os.environ.get("RENDER") or os.environ.get("SPACE_ID"))
-DEFAULT_PROVIDER = "OpenAI / Compatible" if IS_DEPLOYED else "Local (Ollama)"
+PROVIDER_CHOICES = (
+    ["OpenAI / Compatible", "Hugging Face"]
+    if IS_DEPLOYED
+    else ["OpenAI / Compatible", "Hugging Face", "Local (Ollama)"]
+)
+DEFAULT_PROVIDER = "OpenAI / Compatible"
 DEFAULT_TARGET_URL = "https://www.techiewithbeard.com"
 
 custom_theme = gr.themes.Soft(
@@ -38,13 +43,13 @@ def on_discover_tools(target_url: str):
 def on_provider_change(provider: str):
     if provider == "OpenAI / Compatible":
         return (
-            gr.update(visible=True, label="OpenAI API Key (Session-Stored)"),
+            gr.update(visible=True, label="OpenAI API Key (Session-Stored)", placeholder="sk-... (Leave empty to use 3 free demo queries)"),
             gr.update(visible=True, value="https://api.openai.com/v1"),
             gr.update(value="gpt-4o-mini"),
         )
     elif provider == "Hugging Face":
         return (
-            gr.update(visible=True, label="Hugging Face User Token"),
+            gr.update(visible=True, label="Hugging Face User Access Token", placeholder="hf_..."),
             gr.update(visible=False),
             gr.update(value="Qwen/Qwen2.5-7B-Instruct"),
         )
@@ -52,7 +57,7 @@ def on_provider_change(provider: str):
         return (
             gr.update(visible=False),
             gr.update(visible=True, value="http://localhost:11434"),
-            gr.update(value="gemma4:e4b"),
+            gr.update(value="llama3.2"),
         )
 
 
@@ -102,16 +107,21 @@ def chat_with_agent(
     }
     provider = provider_map.get(provider_choice, "ollama")
 
-    resolved_token = api_key or session_token_store.get("api_key") or os.environ.get("OPENAI_API_KEY", "")
+    resolved_token = api_key or session_token_store.get("api_key") or (
+        os.environ.get("HUGGINGFACEHUB_API_TOKEN", "") if provider == "hugging face" else os.environ.get("OPENAI_API_KEY", "")
+    )
     if api_key:
         session_token_store["api_key"] = api_key
 
+    default_model = "gpt-4o-mini" if provider == "openai" else ("Qwen/Qwen2.5-7B-Instruct" if provider == "hugging face" else "llama3.2")
+
     config = ModelConfig(
         provider=provider,
-        chat_model=model_name or ("gpt-4o-mini" if provider == "openai" else "gemma4:e4b"),
-        openai_api_key=SecretStr(resolved_token) if resolved_token else None,
+        chat_model=model_name or default_model,
+        openai_api_key=SecretStr(resolved_token) if provider == "openai" and resolved_token else None,
         openai_base_url=base_url if base_url and "openai.com" not in base_url else None,
         hf_token=SecretStr(resolved_token) if provider == "hugging face" and resolved_token else None,
+        ollama_url=base_url if provider == "ollama" and base_url else "http://localhost:11434",
         temperature=0.1,
         max_new_tokens=512,
     )
@@ -272,22 +282,22 @@ def render_portfolio_agent_tab():
 
     with gr.Accordion("⚙️ Model & Provider Configuration", open=False):
         provider_dropdown = gr.Radio(
-            choices=["Local (Ollama)", "OpenAI / Compatible", "Hugging Face"],
+            choices=PROVIDER_CHOICES,
             value=DEFAULT_PROVIDER,
             label="Provider",
         )
         api_key_input = gr.Textbox(
             type="password",
             label="API Key / Token",
-            placeholder="sk-... (stored strictly in session memory)",
-            visible=(DEFAULT_PROVIDER != "Local (Ollama)"),
+            placeholder="sk-... (Leave blank for 3 free demo queries) or hf_...",
+            visible=True,
         )
         base_url_input = gr.Textbox(
-            value="http://localhost:11434" if DEFAULT_PROVIDER == "Local (Ollama)" else "https://api.openai.com/v1",
+            value="https://api.openai.com/v1",
             label="Base Endpoint URL",
         )
         model_name_input = gr.Textbox(
-            value="gemma4:e4b" if DEFAULT_PROVIDER == "Local (Ollama)" else "gpt-4o-mini",
+            value="gpt-4o-mini",
             label="Chat Model Name",
         )
         single_turn_cb = gr.Checkbox(

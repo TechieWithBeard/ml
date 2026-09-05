@@ -23,12 +23,45 @@ app.add_middleware(
 )
 
 
+import time
+
+MAX_FREE_PROMPTS = 3
+SESSION_STORE: Dict[str, Dict[str, Any]] = {}
+
+
+def check_and_update_session_quota(session_id: str, has_custom_auth: bool) -> tuple[bool, int]:
+    """
+    Returns (is_allowed, quota_remaining).
+    If user provided custom credentials (OpenAI key or Hugging Face token), unlimited queries are granted (-1).
+    """
+    if has_custom_auth:
+        return True, -1
+
+    now = time.time()
+    # Expire entries older than 24 hours to prevent memory creep
+    for s in list(SESSION_STORE.keys()):
+        if now - SESSION_STORE[s].get("timestamp", 0) > 86400:
+            SESSION_STORE.pop(s, None)
+
+    sid = session_id or "anonymous"
+    entry = SESSION_STORE.setdefault(sid, {"prompts": 0, "timestamp": now})
+    entry["timestamp"] = now
+
+    if entry["prompts"] >= MAX_FREE_PROMPTS:
+        return False, 0
+
+    entry["prompts"] += 1
+    remaining = MAX_FREE_PROMPTS - entry["prompts"]
+    return True, remaining
+
+
 class QueryRequest(BaseModel):
     question: str
     target_url: Optional[str] = "https://www.techiewithbeard.com"
-    provider: Optional[str] = "openai"  # "ollama", "openai", "hugging face"
+    provider: Optional[str] = "openai"  # "openai", "hugging face", "ollama"
     chat_model: Optional[str] = None
     openai_base_url: Optional[str] = None
+    ollama_url: Optional[str] = None
 
 
 class QueryResponse(BaseModel):
@@ -39,6 +72,9 @@ class QueryResponse(BaseModel):
     completion_tokens: int = 0
     total_tokens: int = 0
     thought_trace: List[str] = []
+    quota_remaining: Optional[int] = None
+    is_free_tier: bool = False
+    requires_custom_key: bool = False
 
 
 import gradio as gr
@@ -58,6 +94,8 @@ def health_check():
 async def query_langgraph_agent(
     payload: QueryRequest,
     x_openai_key: Optional[str] = Header(None, alias="x-openai-key"),
+    x_hf_token: Optional[str] = Header(None, alias="x-hf-token"),
+    x_session_id: Optional[str] = Header(None, alias="x-session-id"),
     authorization: Optional[str] = Header(None),
 ):
     question = payload.question.strip()
@@ -66,18 +104,48 @@ async def query_langgraph_agent(
 
     target_url = payload.target_url or "https://www.techiewithbeard.com"
 
-    # Resolve API key from header or environment
-    api_key_str = x_openai_key or (authorization.replace("Bearer ", "") if authorization else None)
-    if not api_key_str:
-        api_key_str = os.environ.get("OPENAI_API_KEY")
+    # Determine custom credentials vs shared key
+    custom_openai_key = x_openai_key or (
+        authorization.replace("Bearer ", "") if authorization and "Bearer " in authorization else None
+    )
+    custom_hf_token = x_hf_token
 
-    provider = payload.provider or ("openai" if api_key_str else "ollama")
+    has_custom_auth = bool(custom_openai_key or custom_hf_token)
+    session_id = x_session_id or "anonymous"
+
+    # Check freemium session quota (3 prompts free on shared demo key)
+    is_allowed, quota_remaining = check_and_update_session_quota(session_id, has_custom_auth)
+    if not is_allowed:
+        return QueryResponse(
+            answer=(
+                "⚡ **Demo Quota Reached (3/3 Free Prompts Used)**\n\n"
+                "You have used your 3 free prompts on the shared demo server! "
+                "To continue querying Vishnu's AI agent without limits:\n\n"
+                "1. Click **Settings (⚙️)** in the top bar.\n"
+                "2. Provide your personal **OpenAI API Key** (`sk-...`) or **Hugging Face Token** (`hf_...`).\n"
+                "3. Your credentials remain private in your browser session and unlock **unlimited prompts**."
+            ),
+            references=[f"{target_url.rstrip('/')}/experience", f"{target_url.rstrip('/')}/demos"],
+            quota_remaining=0,
+            is_free_tier=True,
+            requires_custom_key=True,
+        )
+
+    provider = (payload.provider or "openai").lower()
+    # On production, default to openai if an unroutable local provider was chosen
+    if os.environ.get("RENDER") and provider not in ["openai", "hugging face", "huggingface"]:
+        provider = "openai"
+
+    api_key_str = custom_openai_key or os.environ.get("OPENAI_API_KEY")
+    hf_token_str = custom_hf_token or os.environ.get("HUGGINGFACEHUB_API_TOKEN")
 
     config = ModelConfig(
         provider=provider,
-        chat_model=payload.chat_model or ("gpt-4o-mini" if provider == "openai" else "gemma4:e4b"),
+        chat_model=payload.chat_model or ("gpt-4o-mini" if provider == "openai" else "Qwen/Qwen2.5-7B-Instruct"),
         openai_api_key=SecretStr(api_key_str) if api_key_str else None,
         openai_base_url=payload.openai_base_url,
+        hf_token=SecretStr(hf_token_str) if hf_token_str else None,
+        ollama_url=payload.ollama_url or "http://localhost:11434",
         temperature=0.1,
         max_new_tokens=512,
     )
@@ -115,6 +183,9 @@ async def query_langgraph_agent(
             completion_tokens=c_tokens,
             total_tokens=p_tokens + c_tokens,
             thought_trace=result.get("thought_trace", []),
+            quota_remaining=quota_remaining,
+            is_free_tier=not has_custom_auth,
+            requires_custom_key=False,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Agent graph execution failed: {str(e)}")
